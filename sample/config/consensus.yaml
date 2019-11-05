@@ -19,6 +19,9 @@ protocol:
     # Request processing timeout (triggers view change)
     request: 2s
 
+    # TODO: some comment (silently ignored)
+    prepare: 1s
+
     # Initial view change timeout (triggers another view change)
     viewchange: 3s
 

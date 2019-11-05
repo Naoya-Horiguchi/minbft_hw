@@ -148,6 +148,11 @@ func (c *ViperConfiger) TimeoutRequest() time.Duration {
 	return c.getTimeDuration("protocol.timeout.request")
 }
 
+// TODO: need some comment
+func (c *ViperConfiger) TimeoutPrepare() time.Duration {
+	return c.getTimeDuration("protocol.timeout.prepare")
+}
+
 // TimeoutViewChange returns the timeout to receive NEW-VIEW message
 func (c *ViperConfiger) TimeoutViewChange() time.Duration {
 	return c.getTimeDuration("protocol.timeout.viewchange")

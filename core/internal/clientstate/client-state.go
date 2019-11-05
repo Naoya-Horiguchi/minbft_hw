@@ -103,6 +103,9 @@ type State interface {
 
 	StartRequestTimer(handleTimeout func())
 	StopRequestTimer()
+
+	StartPrepareTimer(handleTimeout func())
+	StopPrepareTimer()
 }
 
 // New creates a new instance of client state representation. Optional
@@ -117,6 +120,7 @@ func New(opts ...Option) State {
 	s.seqState = newSeqState()
 	s.replyState = newReplyState()
 	s.requestTimerState = newRequestTimeoutState(&s.opts)
+	s.prepareTimerState = newPrepareTimeoutState(&s.opts)
 
 	return s
 }
@@ -127,6 +131,7 @@ type Option func(*options)
 type options struct {
 	timerProvider  timer.Provider
 	requestTimeout func() time.Duration
+	prepareTimeout func() time.Duration
 }
 
 var defaultOptions = options{
@@ -151,10 +156,18 @@ func WithRequestTimeout(timeout func() time.Duration) Option {
 	}
 }
 
+// WithPrepareTimeout ....
+func WithPrepareTimeout(timeout func() time.Duration) Option {
+	return func(opts *options) {
+		opts.prepareTimeout = timeout
+	}
+}
+
 type clientState struct {
 	*seqState
 	*replyState
 	*requestTimerState
+	*prepareTimerState
 
 	opts options
 }

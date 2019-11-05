@@ -158,6 +158,10 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	handleReqTimeout := func(view uint64) {
 		logger.Panic("Request timed out, but view change not implemented")
 	}
+	prepTimeout := makePrepareTimeoutProvider(config)
+	handlePrepTimeout := func(view uint64) {
+		logger.Infof("Prepare timed out, so the request was discarded.")
+	}
 
 	verifyMessageSignature := makeMessageSignatureVerifier(stack)
 	signMessage := makeReplicaMessageSigner(stack)
@@ -166,6 +170,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 
 	clientStateOpts := []clientstate.Option{
 		clientstate.WithRequestTimeout(reqTimeout),
+		clientstate.WithPrepareTimeout(prepTimeout),
 	}
 	clientStates := clientstate.NewProvider(clientStateOpts...)
 	peerStates := peerstate.NewProvider()
@@ -176,6 +181,8 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	retireSeq := makeRequestSeqRetirer(clientStates)
 	startReqTimer := makeRequestTimerStarter(clientStates, handleReqTimeout, logger)
 	stopReqTimer := makeRequestTimerStopper(clientStates)
+	startPrepTimer := makePrepareTimerStarter(clientStates, handlePrepTimeout, logger)
+	stopPrepTimer := makePrepareTimerStopper(clientStates)
 	captureUI := makeUICapturer(peerStates)
 	provideView := viewState.WaitAndHoldActiveView
 	waitView := viewState.WaitAndHoldView
@@ -199,6 +206,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	countCommitment := makeCommitmentCounter(f)
 	executeOperation := makeOperationExecutor(stack)
 	executeRequest := makeRequestExecutor(id, executeOperation, signMessage, handleGeneratedMessage)
+	// stopReqTimer はそのまま
 	collectCommitment := makeCommitmentCollector(countCommitment, retireSeq, stopReqTimer, executeRequest)
 
 	validateRequest := makeRequestValidator(verifyMessageSignature)
@@ -207,9 +215,9 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	validateMessage := makeMessageValidator(validateRequest, validatePrepare, validateCommit)
 
 	applyCommit := makeCommitApplier(collectCommitment)
-	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage)
+	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage, stopPrepTimer)
 	applyReplicaMessage = makeReplicaMessageApplier(applyPrepare, applyCommit)
-	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startReqTimer)
+	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startPrepTimer, startReqTimer)
 
 	var processMessage messageProcessor
 

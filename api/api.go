@@ -44,6 +44,10 @@ type Configer interface {
 
 	// starts when receives a request and stops when request is accepted
 	TimeoutRequest() time.Duration
+
+	// TODO: comment something
+	TimeoutPrepare() time.Duration
+
 	// starts when sends VIEW-CHANGE and stops when receives a valid NEW-VIEW
 	TimeoutViewChange() time.Duration
 }

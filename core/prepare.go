@@ -64,11 +64,15 @@ func makePrepareValidator(n uint32, verifyUI uiVerifier, validateRequest request
 
 // makePrepareApplier constructs an instance of prepareApplier using
 // id as the current replica ID, and the supplied abstract interfaces.
-func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitment commitmentCollector, handleGeneratedUIMessage generatedUIMessageHandler) prepareApplier {
+func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitment commitmentCollector, handleGeneratedUIMessage generatedUIMessageHandler, stopPrepTimer prepareTimerStopper) prepareApplier {
 	return func(prepare *messages.Prepare) error {
 		if new := prepareSeq(prepare.Msg.Request); !new {
 			return fmt.Errorf("Request already prepared")
 		}
+
+		// TODO: stopPrepareTimer and startRequestTimer here?
+		// TODO: fix semantics of the 1st parameter
+		stopPrepTimer(prepare.Msg.ReplicaId)
 
 		primaryID := prepare.ReplicaID()
 
