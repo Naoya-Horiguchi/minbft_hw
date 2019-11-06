@@ -168,6 +168,11 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		view, releaseView := provideView()
 		defer releaseView()
 
+		if (id == 1 || id == 2) {
+			fmt.Printf("Request Filtered")
+			return nil
+		}
+
 		startPrepTimer(request.Msg.ClientId, view)
 
 		// The primary has to start request timer, as well.
