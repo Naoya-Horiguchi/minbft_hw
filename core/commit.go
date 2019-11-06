@@ -109,6 +109,7 @@ func makeCommitmentCollector(countCommitment commitmentCounter, retireSeq reques
 			return nil // request already accepted for execution
 		}
 
+		fmt.Printf("Stopping Request Timer\n")
 		stopReqTimer(request.Msg.ClientId)
 		executeRequest(request)
 

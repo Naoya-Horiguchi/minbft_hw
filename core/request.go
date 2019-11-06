@@ -169,10 +169,11 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		defer releaseView()
 
 		if (id == 1 || id == 2) {
-			fmt.Printf("Request Filtered")
+			fmt.Printf("Request Filtered\n")
 			return nil
 		}
 
+		fmt.Printf("Starting Prepare Timer\n")
 		startPrepTimer(request.Msg.ClientId, view)
 
 		// The primary has to start request timer, as well.
@@ -181,6 +182,7 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		// view. In that case, other replicas might rely on
 		// this correct replica to trigger another view
 		// change, should the new primary be faulty.
+		fmt.Printf("Starting Request Timer\n")
 		startReqTimer(request.Msg.ClientId, view)
 
 		if isPrimary(view, id, n) {

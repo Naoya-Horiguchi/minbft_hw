@@ -72,6 +72,7 @@ func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitm
 
 		// TODO: stopPrepareTimer and startRequestTimer here?
 		// TODO: fix semantics of the 1st parameter
+		fmt.Printf("Stopping Prepare Timer\n")
 		stopPrepTimer(prepare.Msg.ReplicaId)
 
 		primaryID := prepare.ReplicaID()
