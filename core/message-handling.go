@@ -159,9 +159,6 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 		logger.Panic("Request timed out, but view change not implemented")
 	}
 	prepTimeout := makePrepareTimeoutProvider(config)
-	handlePrepTimeout := func(view uint64) {
-		logger.Infof("Prepare timed out, so the request was discarded.")
-	}
 
 	verifyMessageSignature := makeMessageSignatureVerifier(stack)
 	signMessage := makeReplicaMessageSigner(stack)
@@ -181,6 +178,10 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	retireSeq := makeRequestSeqRetirer(clientStates)
 	startReqTimer := makeRequestTimerStarter(clientStates, handleReqTimeout, logger)
 	stopReqTimer := makeRequestTimerStopper(clientStates)
+	handlePrepTimeout := func(clientID uint32) {
+		logger.Infof("Prepare timed out, so the request was discarded.")
+		stopReqTimer(clientID)
+	}
 	startPrepTimer := makePrepareTimerStarter(clientStates, handlePrepTimeout, logger)
 	stopPrepTimer := makePrepareTimerStopper(clientStates)
 	captureUI := makeUICapturer(peerStates)

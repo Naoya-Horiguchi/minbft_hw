@@ -131,7 +131,7 @@ type prepareTimerStarter func(clientID uint32, view uint64)
 type prepareTimerStopper func(clientID uint32)
 
 // TODO: write some comment
-type prepareTimeoutHandler func(view uint64)
+type prepareTimeoutHandler func(clientID uint32)
 
 // TODO: write some comment
 type prepareTimeoutProvider func() time.Duration
@@ -164,13 +164,30 @@ func makeRequestProcessor(captureSeq requestSeqCapturer, applyRequest requestApp
 }
 
 func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startPrepTimer prepareTimerStarter, startReqTimer requestTimerStarter) requestApplier {
+	var count uint32;
+	count = 0;
+
 	return func(request *messages.Request) error {
 		view, releaseView := provideView()
 		defer releaseView()
 
-		if (id == 1 || id == 2) {
+		scenario := 4
+		if (scenario == 1 && (id == 1 || id == 2)) {
 			fmt.Printf("Request Filtered\n")
 			return nil
+		} else if (scenario == 2 && (id == 2)) {
+			fmt.Printf("Request Filtered\n")
+			return nil
+		} else if (scenario == 3 && (id == 0)) {
+			fmt.Printf("Request Filtered\n")
+			return nil
+		} else if (scenario == 4) {
+			count++;
+			if (count == 1 && id == 0) {
+				fmt.Printf("Request Filtered: %d\n", count)
+				return nil
+			}
+			fmt.Printf("Request accepted: %d\n", count)
 		}
 
 		fmt.Printf("Starting Prepare Timer\n")
@@ -331,7 +348,7 @@ func makePrepareTimerStarter(provideClientState clientstate.Provider, handleTime
 	return func(clientID uint32, view uint64) {
 		provideClientState(clientID).StartPrepareTimer(func() {
 			logger.Warningf("Prepare Timer expired: client=%d view=%d", clientID, view)
-			handleTimeout(view)
+			handleTimeout(clientID)
 		})
 	}
 }
