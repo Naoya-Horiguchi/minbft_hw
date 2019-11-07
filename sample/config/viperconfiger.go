@@ -55,6 +55,7 @@ type Peer struct {
 //
 //      timeout:
 //          request: 2s
+//          prepare: 1s
 //          viewchange: 3s
 //  peers:
 //      - id: 0
@@ -148,7 +149,7 @@ func (c *ViperConfiger) TimeoutRequest() time.Duration {
 	return c.getTimeDuration("protocol.timeout.request")
 }
 
-// TODO: need some comment
+// TimeoutPrepare: need some comment
 func (c *ViperConfiger) TimeoutPrepare() time.Duration {
 	return c.getTimeDuration("protocol.timeout.prepare")
 }

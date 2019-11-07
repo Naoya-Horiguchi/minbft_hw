@@ -171,7 +171,7 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		view, releaseView := provideView()
 		defer releaseView()
 
-		scenario := 4
+		scenario := 0
 		if (scenario == 1 && (id == 1 || id == 2)) {
 			fmt.Printf("Request Filtered\n")
 			return nil
