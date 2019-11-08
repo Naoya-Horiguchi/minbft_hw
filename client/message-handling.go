@@ -123,7 +123,7 @@ func makeOutgoingMessageHandler(replicaID uint32, buf *requestbuffer.T, authenti
 
 					msg2 := messages.WrapMessage(reqcpy)
 					mBytes, err = proto.Marshal(msg2)
-					fmt.Printf("Send request to replica %d with msg %s\n", replicaID, reqcpy.Msg.Payload)
+					fmt.Printf("Send modified request to replica %d with msg %s\n", replicaID, reqcpy.Msg.Payload)
 				} else {
 					fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
 				}

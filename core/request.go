@@ -190,6 +190,7 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 			fmt.Printf("Request accepted: %d\n", count)
 		}
 
+		// TODO: prepare timer は backup のみが仕掛けるべき
 		fmt.Printf("Starting Prepare Timer\n")
 		startPrepTimer(request.Msg.ClientId, view)
 
