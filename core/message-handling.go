@@ -182,8 +182,6 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 		logger.Infof("Prepare timed out, so the request was discarded.")
 		stopReqTimer(clientID)
 	}
-	startPrepTimer := makePrepareTimerStarter(clientStates, handlePrepTimeout, logger)
-	stopPrepTimer := makePrepareTimerStopper(clientStates)
 	captureUI := makeUICapturer(peerStates)
 	provideView := viewState.WaitAndHoldActiveView
 	waitView := viewState.WaitAndHoldView
@@ -215,6 +213,8 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	validateCommit := makeCommitValidator(verifyUI, validatePrepare)
 	validateMessage := makeMessageValidator(validateRequest, validatePrepare, validateCommit)
 
+	startPrepTimer := makePrepareTimerStarter(clientStates, consumeGeneratedMessage, handlePrepTimeout, logger)
+	stopPrepTimer := makePrepareTimerStopper(clientStates)
 	applyCommit := makeCommitApplier(collectCommitment)
 	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage, stopPrepTimer)
 	applyReplicaMessage = makeReplicaMessageApplier(applyPrepare, applyCommit)
@@ -548,6 +548,9 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
 		case *messages.Prepare, *messages.Commit:
+			log.Append(messages.WrapMessage(msg))
+		case *messages.Request:
+			// forwarding Request to primary
 			log.Append(messages.WrapMessage(msg))
 		default:
 			panic("Unknown message type")

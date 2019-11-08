@@ -104,7 +104,7 @@ type State interface {
 	StartRequestTimer(handleTimeout func())
 	StopRequestTimer()
 
-	StartPrepareTimer(handleTimeout func())
+	StartPrepareTimer(forward func(), handleTimeout func())
 	StopPrepareTimer()
 }
 

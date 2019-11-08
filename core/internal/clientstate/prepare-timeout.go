@@ -17,7 +17,6 @@ package clientstate
 import (
 	"sync"
 	"time"
-	"fmt"
 
 	"github.com/hyperledger-labs/minbft/core/internal/timer"
 )

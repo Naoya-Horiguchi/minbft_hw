@@ -93,6 +93,12 @@ func (m *Request) ClientID() uint32 {
 	return m.GetMsg().GetClientId()
 }
 
+// ReplicaID returns ID of the replica forwarding the message
+func (m *Request) ReplicaID() uint32 {
+	// TODO: is this really a good number?
+	return 0
+}
+
 // Payload returns serialized message data, except signature
 func (m *Request) Payload() []byte {
 	mBytes, err := proto.Marshal(m.GetMsg())
@@ -111,6 +117,11 @@ func (m *Request) SignatureBytes() []byte {
 // AttachSignature attaches a serialized signature to the message
 func (m *Request) AttachSignature(signature []byte) {
 	m.Signature = signature
+}
+
+// EmbeddedMessages attaches a list of messages embedded into this one
+func (m *Request) EmbeddedMessages() []interface{} {
+	return nil
 }
 
 // ReplicaID returns ID of the replica created the message
