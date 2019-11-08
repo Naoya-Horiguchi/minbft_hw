@@ -348,6 +348,9 @@ func makeRequestTimeoutProvider(config api.Configer) requestTimeoutProvider {
 func makePrepareTimerStarter(provideClientState clientstate.Provider, handleTimeout prepareTimeoutHandler, logger *logging.Logger) prepareTimerStarter {
 	return func(clientID uint32, view uint64) {
 		provideClientState(clientID).StartPrepareTimer(func() {
+			fmt.Printf("1st prepare expired, need forwarding message to primary\n")
+		},
+		func() {
 			logger.Warningf("Prepare Timer expired: client=%d view=%d", clientID, view)
 			handleTimeout(clientID)
 		})

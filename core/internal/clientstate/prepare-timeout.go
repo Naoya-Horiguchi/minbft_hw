@@ -35,12 +35,7 @@ func newPrepareTimeoutState(opts *options) *prepareTimerState {
 	return &prepareTimerState{opts: opts}
 }
 
-// TODO: maybe will be relocated on better place
-func forwardRequestMessage() {
-	fmt.Printf("1st prepare expired, need forwarding message to primary\n")
-}
-
-func (s *prepareTimerState) StartPrepareTimer(handleTimeout func()) {
+func (s *prepareTimerState) StartPrepareTimer(forward func(), handleTimeout func()) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -55,7 +50,7 @@ func (s *prepareTimerState) StartPrepareTimer(handleTimeout func()) {
 		return
 	}
 
-	s.prepareTimer = timerProvider.AfterFunc(timeout, forwardRequestMessage)
+	s.prepareTimer = timerProvider.AfterFunc(timeout, forward)
 	s.prepareTimer = timerProvider.AfterFunc(timeout, handleTimeout)
 }
 
