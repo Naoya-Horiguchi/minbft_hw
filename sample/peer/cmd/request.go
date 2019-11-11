@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"context"
 
 	"github.com/hyperledger-labs/minbft/api"
 	"github.com/hyperledger-labs/minbft/client"
@@ -67,15 +68,29 @@ type clientStack struct {
 	api.ReplicaConnector
 }
 
+func _request(ctx context.Context, client client.Client, req []byte) {
+	res = <-client.Request(req)
+	fmt.Println("Reply:", string(res))
+}
+
 func request(client client.Client, arg string) {
 	timeout := viper.GetDuration("client.timeout")
 	req := []byte(arg)
-	select {
-	case res := <-client.Request(req):
-		fmt.Println("Reply:", string(res))
-	case <-time.After(timeout):
-		fmt.Println("Request timed out")
+
+	ctx := context.Background()
+	if timeout > time.Duration(0) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+        defer cancel()
 	}
+	go _request(ctx, client, req)
+	//  else {
+	// 	select {
+    // 	case res := <-client.Request(req):
+	// 		fmt.Println("Reply:", string(res))
+	// 	case <-time.After(timeout):
+	// 		fmt.Println("Request timed out")
+	//	}
+	//}
 }
 
 func requests(args []string) ([]byte, error) {
