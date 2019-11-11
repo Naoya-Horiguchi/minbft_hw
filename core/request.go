@@ -124,6 +124,18 @@ type requestTimeoutHandler func(view uint64)
 // requestTimeoutProvider returns current request timeout duration.
 type requestTimeoutProvider func() time.Duration
 
+// TODO: write some comment
+type prepareTimerStarter func(request *messages.Request, view uint64)
+
+// TODO: write some comment
+type prepareTimerStopper func(clientID uint32)
+
+// TODO: write some comment
+type prepareTimeoutHandler func(clientID uint32)
+
+// TODO: write some comment
+type prepareTimeoutProvider func() time.Duration
+
 // makeRequestValidator constructs an instance of requestValidator
 // using the supplied abstractions.
 func makeRequestValidator(verify messageSignatureVerifier) requestValidator {
@@ -151,10 +163,13 @@ func makeRequestProcessor(captureSeq requestSeqCapturer, applyRequest requestApp
 	}
 }
 
-func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startReqTimer requestTimerStarter) requestApplier {
+func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startPrepTimer prepareTimerStarter, startReqTimer requestTimerStarter) requestApplier {
 	return func(request *messages.Request) error {
 		view, releaseView := provideView()
 		defer releaseView()
+
+		// TODO: prepare timer は backup のみが仕掛けるべき
+		startPrepTimer(request, view)
 
 		// The primary has to start request timer, as well.
 		// Suppose, the primary is correct, but its messages
@@ -303,5 +318,32 @@ func makeRequestTimeoutProvider(config api.Configer) requestTimeoutProvider {
 	// network delay.
 	return func() time.Duration {
 		return config.TimeoutRequest()
+	}
+}
+
+func makePrepareTimerStarter(provideClientState clientstate.Provider, consume generatedMessageConsumer, handleTimeout prepareTimeoutHandler, logger *logging.Logger) prepareTimerStarter {
+	return func(request *messages.Request, view uint64) {
+		clientID := request.Msg.ClientId
+
+		provideClientState(clientID).StartPrepareTimer(func() {
+			fmt.Printf("1st prepare expired, need forwarding message to primary\n")
+			consume(request)
+		},
+		func() {
+			logger.Warningf("Prepare Timer expired: client=%d view=%d", clientID, view)
+			handleTimeout(clientID)
+		})
+	}
+}
+
+func makePrepareTimerStopper(provideClientState clientstate.Provider) prepareTimerStopper {
+	return func(clientID uint32) {
+		provideClientState(clientID).StopPrepareTimer()
+	}
+}
+
+func makePrepareTimeoutProvider(config api.Configer) prepareTimeoutProvider {
+	return func() time.Duration {
+		return config.TimeoutPrepare()
 	}
 }
