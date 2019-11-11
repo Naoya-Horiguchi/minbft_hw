@@ -71,7 +71,7 @@ type clientStack struct {
 }
 
 func _request(ctx context.Context, client client.Client, req []byte) {
-	res = <-client.Request(req)
+	res := <-client.Request(req)
 	fmt.Println("Reply:", string(res))
 }
 
@@ -81,7 +81,8 @@ func request(client client.Client, arg string) {
 
 	ctx := context.Background()
 	if timeout > time.Duration(0) {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
         defer cancel()
 	}
 	go _request(ctx, client, req)
