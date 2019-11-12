@@ -16,8 +16,8 @@ client:
   # ID of the client instance
   id: 0
 
-  # Client request timeout
-  timeout: 3s
+  # Client request timeout (default: 0s, i.e. never timeout)
+  #timeout: 3s
 
 # USIG options
 usig:
