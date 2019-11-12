@@ -70,7 +70,7 @@ type clientStack struct {
 	api.ReplicaConnector
 }
 
-func _request(ctx context.Context, ch chan bool, client client.Client, req []byte) {
+func requestInternal(ctx context.Context, ch chan bool, client client.Client, req []byte) {
 	defer func() {
 		ch <- true
 	}()
@@ -80,28 +80,22 @@ func _request(ctx context.Context, ch chan bool, client client.Client, req []byt
 
 func request(client client.Client, arg string) {
 	timeout := viper.GetDuration("client.timeout")
+	ctx := context.Background()
+	ch := make(chan bool)
 	req := []byte(arg)
 
-	fmt.Printf("-----> timeout %d %d\n", timeout, time.Duration(0))
-	ctx := context.Background()
 	if timeout > time.Duration(0) {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
-        defer cancel()
-		fmt.Printf("cancel %v\n", cancel)
+		time.AfterFunc(timeout, cancel)
 	}
-	ch := make(chan bool)
-	go _request(ctx, ch, client, req)
-	go func(){}()
-	<-ch
-	fmt.Println("doWorkContext: Bn")
 
-	// select {
-    //  	case res := <-client.Request(req):
-	//  		fmt.Println("Reply:", string(res))
-	//  	case <-time.After(timeout):
-	//  		fmt.Println("Request timed out")
-	// }
+	go requestInternal(ctx, ch, client, req)
+	select {
+		case <-ctx.Done():
+			fmt.Println("Client Request timer expired.")
+		case <-ch:
+	}
 }
 
 func requests(args []string) ([]byte, error) {
