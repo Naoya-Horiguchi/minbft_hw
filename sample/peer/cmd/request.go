@@ -67,6 +67,8 @@ type clientStack struct {
 }
 
 func request(client client.Client, arg string) {
+	ctx := context.Background()
+	ch := make(chan bool)
 	req := []byte(arg)
 	res := <-client.Request(req)
 	fmt.Println("Reply:", string(res))

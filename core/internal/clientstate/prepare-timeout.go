@@ -17,6 +17,7 @@ package clientstate
 import (
 	"sync"
 	"time"
+	"fmt"
 
 	"github.com/hyperledger-labs/minbft/core/internal/timer"
 )
@@ -48,6 +49,7 @@ func (s *prepareTimerState) StartPrepareTimer(forward func()) {
 		return
 	}
 
+	fmt.Printf("start forward timer: timeout = %d\n", timeout)
 	s.prepareTimer = timerProvider.AfterFunc(timeout, forward)
 }
 
