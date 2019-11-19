@@ -61,6 +61,8 @@ func init() {
 		requestCmd.Flags().Lookup("id")))
 	requestCmd.Flags().String("timeout", "0", "Timeout for the request")
 	must(viper.BindPFlag("client.timeout", requestCmd.Flags().Lookup("timeout")))
+	requestCmd.Flags().Int("debug-scenario", 0, "debug scenario")
+	must(viper.BindPFlag("debug.scenario", requestCmd.Flags().Lookup("debug-scenario")))
 }
 
 type clientStack struct {

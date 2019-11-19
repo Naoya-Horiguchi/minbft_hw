@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger-labs/minbft/api"
 	"github.com/hyperledger-labs/minbft/client/internal/requestbuffer"
 	"github.com/hyperledger-labs/minbft/messages"
+	"github.com/spf13/viper"
 )
 
 // startReplicaConnections initiates connections to all replicas and
@@ -31,13 +32,13 @@ import (
 // request buffer to add/fetch messages to/from and a stack of
 // interfaces to external modules.
 func startReplicaConnections(clientID, n uint32, buf *requestbuffer.T, stack Stack) error {
-	outHandler := makeOutgoingMessageHandler(buf)
 	authenticator := makeReplyAuthenticator(clientID, stack)
 	consumer := makeReplyConsumer(buf)
 	handleReply := makeReplyMessageHandler(consumer, authenticator)
 
 	for i := uint32(0); i < n; i++ {
 		connector := makeReplicaConnector(i, stack)
+		outHandler := makeOutgoingMessageHandler(i, buf, stack)
 		inHandler := makeIncomingMessageHandler(i, handleReply)
 		if err := startReplicaConnection(outHandler, inHandler, connector); err != nil {
 			return fmt.Errorf("Error connecting to replica %d: %s", i, err)
@@ -76,7 +77,9 @@ func startReplicaConnection(outHandler outgoingMessageHandler, inHandler incomin
 
 // makeOutgoingMessageHandler construct an outgoingMessageHandler
 // using the supplied request buffer as a source of outgoing messages.
-func makeOutgoingMessageHandler(buf *requestbuffer.T) outgoingMessageHandler {
+func makeOutgoingMessageHandler(replicaID uint32, buf *requestbuffer.T, authenticator api.Authenticator) outgoingMessageHandler {
+	scenario := viper.GetInt("debug.scenario")
+
 	return func(out chan<- []byte) {
 		for req := range buf.RequestStream(nil) {
 			msg := messages.WrapMessage(req)
@@ -84,6 +87,65 @@ func makeOutgoingMessageHandler(buf *requestbuffer.T) outgoingMessageHandler {
 			if err != nil {
 				panic(err)
 			}
+
+			reqcpy := new(messages.Request)
+			*reqcpy = *req
+			reqcpy.Msg = new(messages.Request_M)
+			*reqcpy.Msg = *req.Msg
+			// fmt.Printf("scenario %d, clientid %d, message seq %d\n", scenario, req.Msg.ClientId, req.Msg.Seq)
+			if (scenario == 1) {
+				if (replicaID != 0) {
+					continue
+				}
+				fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+			} else if (scenario == 2) {
+				if (replicaID == 2) {
+					continue
+				}
+				fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+			} else if (scenario == 3) {
+				if (replicaID != 1) {
+					continue
+				}
+				fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+			} else if (scenario == 4) {
+				if (replicaID == 0) {
+					continue
+				}
+				fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+			} else if (scenario == 5) {
+				if (replicaID == 2) {
+					reqcpy.Msg.Payload = append(reqcpy.Msg.Payload, []byte("XXXXX")...)
+
+					reqBytes, _ := proto.Marshal(reqcpy.Msg)
+					sig, _ := authenticator.GenerateMessageAuthenTag(api.ClientAuthen, reqBytes)
+					reqcpy.Signature = sig
+
+					msg2 := messages.WrapMessage(reqcpy)
+					mBytes, err = proto.Marshal(msg2)
+					fmt.Printf("Send modified request to replica %d with msg %s\n", replicaID, reqcpy.Msg.Payload)
+				} else {
+					fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+				}
+			} else if (scenario == 6) {
+				if (replicaID == 2) {
+					continue
+				} else if (replicaID == 1) {
+					reqcpy.Msg.Payload = append(reqcpy.Msg.Payload, []byte("XXXXX")...)
+
+					reqBytes, _ := proto.Marshal(reqcpy.Msg)
+					sig, _ := authenticator.GenerateMessageAuthenTag(api.ClientAuthen, reqBytes)
+					reqcpy.Signature = sig
+
+					msg2 := messages.WrapMessage(reqcpy)
+					mBytes, err = proto.Marshal(msg2)
+					fmt.Printf("Send modified request to replica %d with msg %s\n", replicaID, reqcpy.Msg.Payload)
+				} else {
+					fmt.Printf("Send request to replica %d with msg %s\n", replicaID, req.Msg.Payload)
+				}
+			}
+			// fmt.Printf("req %p, %d\ncpy %p %d\n%d\n", req, *req, reqcpy, *reqcpy, req == reqcpy)
+			fmt.Printf("req %p %p\ncpy %p %p\n%t\n", req, req.Msg, reqcpy, reqcpy.Msg, req == reqcpy)
 			out <- mBytes
 		}
 	}
