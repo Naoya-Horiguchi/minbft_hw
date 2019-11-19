@@ -57,6 +57,8 @@ func init() {
 	requestCmd.Flags().Int("id", 0, "ID of the client")
 	must(viper.BindPFlag("client.id",
 		requestCmd.Flags().Lookup("id")))
+	requestCmd.Flags().Int("debug-scenario", 0, "debug scenario")
+	must(viper.BindPFlag("debug.scenario", requestCmd.Flags().Lookup("debug-scenario")))
 }
 
 type clientStack struct {
