@@ -19,7 +19,9 @@ package minbft
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/spf13/viper"
 	"github.com/hyperledger-labs/minbft/messages"
 )
 
@@ -71,10 +73,27 @@ func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitm
 			return fmt.Errorf("Request already prepared")
 		}
 
+		scenario := viper.GetInt("debug.scenario")
+		if (scenario == 3) {
+			time.Sleep(500*time.Millisecond)
+			fmt.Printf("Prepare Delayed for 0.5 sec\n")
+		} else if (scenario == 4) {
+			fmt.Printf("Prepare Filtered\n")
+			return nil
+		}
+
 		// TODO: need more better comment
 		stopPrepTimer(prepare.Msg.ReplicaId)
 		startReqTimer(request.Msg.ClientId, prepare.Msg.View)
-	
+
+		if (scenario == 5) {
+			time.Sleep(500*time.Millisecond)
+			fmt.Printf("Prepare Delayed for 0.5 sec started request timer\n")
+		} else if (scenario == 6) {
+			fmt.Printf("Prepare Filtered after started request timer\n")
+			return nil
+		}
+
 		primaryID := prepare.ReplicaID()
 
 		if err := collectCommitment(primaryID, prepare); err != nil {

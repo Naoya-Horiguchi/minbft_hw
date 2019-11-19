@@ -23,6 +23,7 @@ import (
 	"time"
 
 	logging "github.com/op/go-logging"
+	"github.com/spf13/viper"
 
 	"github.com/hyperledger-labs/minbft/api"
 	"github.com/hyperledger-labs/minbft/core/internal/clientstate"
@@ -169,8 +170,14 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		view, releaseView := provideView()
 		defer releaseView()
 
-		// TODO: prepare timer only set on backup replicas
-		startPrepTimer(request, view)
+		scenario := viper.GetInt("debug.scenario")
+		if (scenario == 1) {
+			time.Sleep(500*time.Millisecond)
+			fmt.Printf("Request Delayed for 0.5 sec\n")
+		} else if (scenario == 2) {
+			fmt.Printf("Request Filtered\n")
+			return nil
+		}
 
 		// We need apply the above logic on primary for prepare timer?
 		// if ! isPrimary(view, id, n) {
@@ -323,10 +330,12 @@ func makePrepareTimerStarter(provideClientState clientstate.Provider, consume ge
 	return func(request *messages.Request, view uint64) {
 		clientID := request.Msg.ClientId
 
+		logger.Infof("start prepare timer\n")
 		provideClientState(clientID).StartPrepareTimer(func() {
 			logger.Infof("1st prepare expired, need forwarding message to primary\n")
 			consume(request)
 		})
+		logger.Infof("started prepare timer\n")
 	}
 }
 

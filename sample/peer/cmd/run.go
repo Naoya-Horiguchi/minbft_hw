@@ -80,6 +80,9 @@ func init() {
 	rootCmd.PersistentFlags().String("logging-file", "", "logging file")
 	must(viper.BindPFlag("logging.file",
 		rootCmd.PersistentFlags().Lookup("logging-file")))
+
+	runCmd.Flags().Int("debug-scenario", 0, "debug scenario")
+	must(viper.BindPFlag("debug.scenario", runCmd.Flags().Lookup("debug-scenario")))
 }
 
 type replicaStack struct {
@@ -90,6 +93,8 @@ type replicaStack struct {
 
 func run() error {
 	id := uint32(viper.GetInt("replica.id"))
+	scenario := viper.GetInt("debug.scenario")
+fmt.Printf("++++++++++++ ds : %d\n", scenario)
 
 	usigEnclaveFile, err := envsubst.String(viper.GetString("usig.enclaveFile"))
 	if err != nil {
