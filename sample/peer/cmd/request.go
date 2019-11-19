@@ -21,6 +21,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"time"
+	"context"
 
 	"github.com/hyperledger-labs/minbft/api"
 	"github.com/hyperledger-labs/minbft/client"
@@ -57,6 +59,8 @@ func init() {
 	requestCmd.Flags().Int("id", 0, "ID of the client")
 	must(viper.BindPFlag("client.id",
 		requestCmd.Flags().Lookup("id")))
+	requestCmd.Flags().String("timeout", "0", "Timeout for the request")
+	must(viper.BindPFlag("client.timeout", requestCmd.Flags().Lookup("timeout")))
 }
 
 type clientStack struct {
@@ -64,10 +68,32 @@ type clientStack struct {
 	api.ReplicaConnector
 }
 
-func request(client client.Client, arg string) {
-	req := []byte(arg)
+func requestInternal(ctx context.Context, ch chan bool, client client.Client, req []byte) {
+	defer func() {
+		ch <- true
+	}()
 	res := <-client.Request(req)
 	fmt.Println("Reply:", string(res))
+}
+
+func request(client client.Client, arg string) {
+	timeout := viper.GetDuration("client.timeout")
+	ctx := context.Background()
+	ch := make(chan bool)
+	req := []byte(arg)
+
+	if timeout > time.Duration(0) {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		time.AfterFunc(timeout, cancel)
+	}
+
+	go requestInternal(ctx, ch, client, req)
+	select {
+		case <-ctx.Done():
+			fmt.Println("Client Request timer expired.")
+		case <-ch:
+	}
 }
 
 func requests(args []string) ([]byte, error) {
