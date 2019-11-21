@@ -164,6 +164,7 @@ func makeRequestProcessor(captureSeq requestSeqCapturer, applyRequest requestApp
 	}
 }
 
+// order of parameter?
 func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startPrepTimer prepareTimerStarter, startReqTimer requestTimerStarter) requestApplier {
 	return func(request *messages.Request) error {
 		view, releaseView := provideView()
@@ -187,9 +188,9 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		startReqTimer(request.Msg.ClientId, view)
 
 		// We need apply the above logic on primary for prepare timer?
-		if ! isPrimary(view, id, n) {
+		// if ! isPrimary(view, id, n) {
 			startPrepTimer(request, view)
-		}
+		// }
 
 		if isPrimary(view, id, n) {
 			prepare := &messages.Prepare{

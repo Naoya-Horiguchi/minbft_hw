@@ -145,7 +145,7 @@ func makeOutgoingMessageHandler(replicaID uint32, buf *requestbuffer.T, authenti
 				}
 			}
 			// fmt.Printf("req %p, %d\ncpy %p %d\n%d\n", req, *req, reqcpy, *reqcpy, req == reqcpy)
-			fmt.Printf("req %p %p\ncpy %p %p\n%d\n", req, req.Msg, reqcpy, reqcpy.Msg, req == reqcpy)
+			fmt.Printf("req %p %p\ncpy %p %p\n%t\n", req, req.Msg, reqcpy, reqcpy.Msg, req == reqcpy)
 			out <- mBytes
 		}
 	}
