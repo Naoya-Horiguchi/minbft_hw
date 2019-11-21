@@ -212,9 +212,9 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	stopPrepTimer := makePrepareTimerStopper(clientStates)
 
 	applyCommit := makeCommitApplier(collectCommitment)
-	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage, stopPrepTimer)
+	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage, stopPrepTimer, startReqTimer)
 	applyReplicaMessage = makeReplicaMessageApplier(applyPrepare, applyCommit)
-	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startPrepTimer, startReqTimer)
+	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startPrepTimer)
 
 	var processMessage messageProcessor
 

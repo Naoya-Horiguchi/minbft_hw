@@ -163,7 +163,8 @@ func makeRequestProcessor(captureSeq requestSeqCapturer, applyRequest requestApp
 	}
 }
 
-func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startPrepTimer prepareTimerStarter, startReqTimer requestTimerStarter) requestApplier {
+// order of parameter?
+func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startPrepTimer prepareTimerStarter) requestApplier {
 	return func(request *messages.Request) error {
 		view, releaseView := provideView()
 		defer releaseView()
@@ -171,18 +172,10 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		// TODO: prepare timer only set on backup replicas
 		startPrepTimer(request, view)
 
-		// The primary has to start request timer, as well.
-		// Suppose, the primary is correct, but its messages
-		// are delayed, and other replicas switch to a new
-		// view. In that case, other replicas might rely on
-		// this correct replica to trigger another view
-		// change, should the new primary be faulty.
-		startReqTimer(request.Msg.ClientId, view)
-
 		// We need apply the above logic on primary for prepare timer?
-		if ! isPrimary(view, id, n) {
-			startPrepTimer(request, view)
-		}
+		// if ! isPrimary(view, id, n) {
+		startPrepTimer(request, view)
+		// }
 
 		if isPrimary(view, id, n) {
 			prepare := &messages.Prepare{
