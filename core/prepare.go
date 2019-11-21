@@ -64,9 +64,12 @@ func makePrepareValidator(n uint32, verifyUI uiVerifier, validateRequest request
 
 // makePrepareApplier constructs an instance of prepareApplier using
 // id as the current replica ID, and the supplied abstract interfaces.
-func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitment commitmentCollector, handleGeneratedUIMessage generatedUIMessageHandler) prepareApplier {
+func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitment commitmentCollector, handleGeneratedUIMessage generatedUIMessageHandler, stopPrepTimer prepareTimerStopper, startReqTimer requestTimerStarter) prepareApplier {
 	return func(prepare *messages.Prepare) error {
-		if new := prepareSeq(prepare.Msg.Request); !new {
+		stopPrepTimer(prepare.Msg.ReplicaId)
+
+		request := prepare.Msg.Request
+		if new := prepareSeq(request); !new {
 			return fmt.Errorf("Request already prepared")
 		}
 
@@ -75,6 +78,8 @@ func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitm
 		if err := collectCommitment(primaryID, prepare); err != nil {
 			return fmt.Errorf("Prepare cannot be taken into account: %s", err)
 		}
+
+		startReqTimer(request.Msg.ClientId, prepare.Msg.View)
 
 		if id == primaryID {
 			return nil // primary does not generate Commit
@@ -85,7 +90,7 @@ func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitm
 				View:      prepare.Msg.View,
 				ReplicaId: id,
 				PrimaryId: primaryID,
-				Request:   prepare.Msg.Request,
+				Request:   request,
 				PrimaryUi: prepare.UIBytes(),
 			},
 		}

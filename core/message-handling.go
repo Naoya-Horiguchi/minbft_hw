@@ -158,6 +158,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	handleReqTimeout := func(view uint64) {
 		logger.Panic("Request timed out, but view change not implemented")
 	}
+	prepTimeout := makePrepareTimeoutProvider(config)
 
 	verifyMessageSignature := makeMessageSignatureVerifier(stack)
 	signMessage := makeReplicaMessageSigner(stack)
@@ -166,6 +167,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 
 	clientStateOpts := []clientstate.Option{
 		clientstate.WithRequestTimeout(reqTimeout),
+		clientstate.WithPrepareTimeout(prepTimeout),
 	}
 	clientStates := clientstate.NewProvider(clientStateOpts...)
 	peerStates := peerstate.NewProvider()
@@ -206,10 +208,13 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 	validateCommit := makeCommitValidator(verifyUI, validatePrepare)
 	validateMessage := makeMessageValidator(validateRequest, validatePrepare, validateCommit)
 
+	startPrepTimer := makePrepareTimerStarter(clientStates, consumeGeneratedMessage, logger)
+	stopPrepTimer := makePrepareTimerStopper(clientStates)
+
 	applyCommit := makeCommitApplier(collectCommitment)
-	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage)
+	applyPrepare := makePrepareApplier(id, prepareSeq, collectCommitment, handleGeneratedUIMessage, stopPrepTimer, startReqTimer)
 	applyReplicaMessage = makeReplicaMessageApplier(applyPrepare, applyCommit)
-	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startReqTimer)
+	applyRequest := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startPrepTimer)
 
 	var processMessage messageProcessor
 
@@ -538,7 +543,7 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 				// Erroneous Reply must never be supplied
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
-		case *messages.Prepare, *messages.Commit:
+		case *messages.Request, *messages.Prepare, *messages.Commit:
 			log.Append(messages.WrapMessage(msg))
 		default:
 			panic("Unknown message type")

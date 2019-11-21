@@ -42,8 +42,13 @@ type Configer interface {
 	// L: must be larger than CheckpointPeriod
 	Logsize() uint32
 
-	// starts when receives a request and stops when request is accepted
+	// starts when receives a prepare message and stops when request
+	// is accepted
 	TimeoutRequest() time.Duration
+
+	// starts when receives a request and stops when request is prepared
+	TimeoutPrepare() time.Duration
+
 	// starts when sends VIEW-CHANGE and stops when receives a valid NEW-VIEW
 	TimeoutViewChange() time.Duration
 }
