@@ -56,7 +56,7 @@ type authenticator struct {
 	stub int
 }
 
-type prlogAppender func(send int, replicaID uint32, msg []byte)
+type prlogAppender func(log *messageLog, send int, replicaID uint32, msg []byte)
 
 type messageLog struct {
 	lock sync.RWMutex
@@ -68,6 +68,10 @@ type messageLog struct {
 	newAdded []chan<- struct{}
 
 	appendPRlog prlogAppender
+
+	logseq uint64
+	entries map[uint64]logEntry
+	// authenticators map[uint64]authenticator
 }
 
 func getMsgHash(msg []byte) []byte {
@@ -81,6 +85,8 @@ func getMsgHash(msg []byte) []byte {
 func New(id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
+	msgLog.logseq = uint64(0)
+	msgLog.entries = make(map[uint64]logEntry)
 	return msgLog
 }
 
@@ -100,17 +106,11 @@ func (log *messageLog) Append(msg messages.ReplicaMessage) {
 
 func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) {
 	// lock?
-	log.appendPRlog(send, replicaID, msg)
+	log.appendPRlog(log, send, replicaID, msg)
 }
 
 func makePRlogAppender(id uint32) prlogAppender {
-	var (
-		logseq uint64
-		entries = make(map[uint64]logEntry)
-		// authenticators map[uint64]authenticator
-	)
-
-	return func (send int, replicaID uint32, msg []byte) {
+	return func (log *messageLog, send int, replicaID uint32, msg []byte) {
 		// lock?
 
 		if replicaID == id {
@@ -122,9 +122,9 @@ func makePRlogAppender(id uint32) prlogAppender {
 			otherNode: replicaID,
 			msgHash: getMsgHash(msg),
 		}
-		entries[logseq] = *entry
-		logseq++
-		for k, v := range entries { 
+		log.entries[log.logseq] = *entry
+		log.logseq++
+		for k, v := range log.entries {
 			fmt.Printf("??? log[%d] is %x\n", k, v)
 		}
 	}
@@ -154,7 +154,7 @@ func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-
 		log.lock.RUnlock()
 
 		for _, msg := range msgs {
-			fmt.Printf("BOBO: %v\n", msg)
+			// fmt.Printf("BOBO: %v\n", msg)
 			select {
 			case ch <- msg:
 			case <-done:
