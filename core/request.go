@@ -35,14 +35,14 @@ import (
 // It returns a channel that can be used to receive a Reply message
 // corresponding to the supplied Request message. It is safe to invoke
 // concurrently.
-type requestReplier func(request *messages.Request) <-chan *messages.Reply
+type requestReplier func(request messages.Request) <-chan messages.Reply
 
 // requestValidator validates a Request message.
 //
 // It authenticates and checks the supplied message for internal
 // consistency. It does not use replica's current state and has no
 // side-effect. It is safe to invoke concurrently.
-type requestValidator func(request *messages.Request) error
+type requestValidator func(request messages.Request) error
 
 // requestProcessor processes a valid Request message.
 //
@@ -50,7 +50,7 @@ type requestValidator func(request *messages.Request) error
 // assumed to be authentic and internally consistent. The return value
 // new indicates if the message has not been processed by this replica
 // before. It is safe to invoke concurrently.
-type requestProcessor func(request *messages.Request) (new bool, err error)
+type requestProcessor func(request messages.Request) (new bool, err error)
 
 // requestApplier applies Request message to current replica state.
 //
@@ -58,12 +58,12 @@ type requestProcessor func(request *messages.Request) (new bool, err error)
 // changing the state accordingly and producing any required messages
 // or side effects. The supplied message is assumed to be authentic
 // and internally consistent. It is safe to invoke concurrently.
-type requestApplier func(request *messages.Request) error
+type requestApplier func(request messages.Request) error
 
 // requestExecutor given a Request message executes the requested
 // operation, produces the corresponding Reply message ready for
 // delivery to the client, and hands it over for further processing.
-type requestExecutor func(request *messages.Request)
+type requestExecutor func(request messages.Request)
 
 // operationExecutor executes an operation on the local instance of
 // the replicated state machine. The result of operation execution
@@ -81,7 +81,7 @@ type operationExecutor func(operation []byte) (resultChan <-chan []byte)
 // processed. In that case, the processing has to be completed by
 // invoking the returned release function. It is safe to invoke
 // concurrently.
-type requestSeqCapturer func(request *messages.Request) (new bool, release func())
+type requestSeqCapturer func(request messages.Request) (new bool, release func())
 
 // requestSeqPreparer records request identifier as prepared.
 //
@@ -89,7 +89,7 @@ type requestSeqCapturer func(request *messages.Request) (new bool, release func(
 // prepared. It returns true if the request identifier from the client
 // could not have been prepared before. The identifier must be
 // previously captured. It is safe to invoke concurrently.
-type requestSeqPreparer func(request *messages.Request) (new bool)
+type requestSeqPreparer func(request messages.Request) (new bool)
 
 // requestSeqRetirer records request identifier as retired.
 //
@@ -97,7 +97,7 @@ type requestSeqPreparer func(request *messages.Request) (new bool)
 // retired. It returns true if the request identifier from the client
 // could not have been retired before. The identifier must be
 // previously prepared. It is safe to invoke concurrently.
-type requestSeqRetirer func(request *messages.Request) (new bool)
+type requestSeqRetirer func(request messages.Request) (new bool)
 
 // requestTimerStarter starts request timer.
 //
@@ -133,7 +133,8 @@ type requestTimeoutProvider func() time.Duration
 // the request message. It is allowed to restart a timer before the previous
 // corresponding timer has stopped or expired. It is safe to invoke
 // concurrently.
-type prepareTimerStarter func(request *messages.Request, view uint64)
+// #########
+type prepareTimerStarter func(request messages.Request, view uint64)
 
 // prepareTimerStopper stops prepare timer.
 type prepareTimerStopper func(clientID uint32)
@@ -144,7 +145,7 @@ type prepareTimeoutProvider func() time.Duration
 // makeRequestValidator constructs an instance of requestValidator
 // using the supplied abstractions.
 func makeRequestValidator(verify messageSignatureVerifier) requestValidator {
-	return func(request *messages.Request) error {
+	return func(request messages.Request) error {
 		return verify(request)
 	}
 }
@@ -153,7 +154,7 @@ func makeRequestValidator(verify messageSignatureVerifier) requestValidator {
 // using id as the current replica ID, n as the total number of nodes,
 // and the supplied abstractions.
 func makeRequestProcessor(captureSeq requestSeqCapturer, pendingReq requestlist.List, applyRequest requestApplier) requestProcessor {
-	return func(request *messages.Request) (new bool, err error) {
+	return func(request messages.Request) (new bool, err error) {
 		new, releaseSeq := captureSeq(request)
 		if !new {
 			return false, nil
@@ -171,7 +172,7 @@ func makeRequestProcessor(captureSeq requestSeqCapturer, pendingReq requestlist.
 }
 
 func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedUIMessage generatedUIMessageHandler, startReqTimer requestTimerStarter, startPrepTimer prepareTimerStarter) requestApplier {
-	return func(request *messages.Request) error {
+	return func(request messages.Request) error {
 		view, releaseView := provideView()
 		defer releaseView()
 
@@ -181,18 +182,11 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 		// view. In that case, other replicas might rely on
 		// this correct replica to trigger another view
 		// change, should the new primary be faulty.
-		startReqTimer(request.Msg.ClientId, view)
+		startReqTimer(request.ClientID(), view)
 		startPrepTimer(request, view)
 
 		if isPrimary(view, id, n) {
-			prepare := &messages.Prepare{
-				Msg: &messages.Prepare_M{
-					View:      view,
-					ReplicaId: id,
-					Request:   request,
-				},
-			}
-
+			prepare := messageImpl.NewPrepare(id, view, request)
 			handleGeneratedUIMessage(prepare)
 		}
 
@@ -203,9 +197,9 @@ func makeRequestApplier(id, n uint32, provideView viewProvider, handleGeneratedU
 // makeRequestReplier constructs an instance of requestReplier using
 // the supplied client state provider.
 func makeRequestReplier(provider clientstate.Provider) requestReplier {
-	return func(request *messages.Request) <-chan *messages.Reply {
-		state := provider(request.Msg.ClientId)
-		return state.ReplyChannel(request.Msg.Seq)
+	return func(request messages.Request) <-chan messages.Reply {
+		state := provider(request.ClientID())
+		return state.ReplyChannel(request.Sequence())
 	}
 }
 
@@ -213,19 +207,12 @@ func makeRequestReplier(provider clientstate.Provider) requestReplier {
 // the supplied replica ID, operation executor, message signer, and
 // reply consumer.
 func makeRequestExecutor(id uint32, executor operationExecutor, signer replicaMessageSigner, handleGeneratedMessage generatedMessageHandler) requestExecutor {
-	return func(request *messages.Request) {
-		resultChan := executor(request.Msg.Payload)
+	return func(request messages.Request) {
+		resultChan := executor(request.Operation())
 		go func() {
 			result := <-resultChan
 
-			reply := &messages.Reply{
-				Msg: &messages.Reply_M{
-					ReplicaId: id,
-					ClientId:  request.Msg.ClientId,
-					Seq:       request.Msg.Seq,
-					Result:    result,
-				},
-			}
+			reply := messageImpl.NewReply(id, request.ClientID(), request.Sequence(), result)
 			signer(reply)
 			handleGeneratedMessage(reply)
 		}()
@@ -251,9 +238,9 @@ func makeOperationExecutor(consumer api.RequestConsumer) operationExecutor {
 // makeRequestSeqCapturer constructs an instance of requestSeqCapturer
 // using the supplied client state provider.
 func makeRequestSeqCapturer(provideClientState clientstate.Provider) requestSeqCapturer {
-	return func(request *messages.Request) (new bool, release func()) {
-		clientID := request.Msg.ClientId
-		seq := request.Msg.Seq
+	return func(request messages.Request) (new bool, release func()) {
+		clientID := request.ClientID()
+		seq := request.Sequence()
 
 		return provideClientState(clientID).CaptureRequestSeq(seq)
 	}
@@ -262,9 +249,9 @@ func makeRequestSeqCapturer(provideClientState clientstate.Provider) requestSeqC
 // makeRequestSeqPreparer constructs an instance of requestSeqPreparer
 // using the supplied interface.
 func makeRequestSeqPreparer(provideClientState clientstate.Provider) requestSeqPreparer {
-	return func(request *messages.Request) (new bool) {
-		clientID := request.Msg.ClientId
-		seq := request.Msg.Seq
+	return func(request messages.Request) (new bool) {
+		clientID := request.ClientID()
+		seq := request.Sequence()
 
 		if new, err := provideClientState(clientID).PrepareRequestSeq(seq); err != nil {
 			panic(err)
@@ -279,9 +266,9 @@ func makeRequestSeqPreparer(provideClientState clientstate.Provider) requestSeqP
 // makeRequestSeqRetirer constructs an instance of requestSeqRetirer
 // using the supplied interface.
 func makeRequestSeqRetirer(provideClientState clientstate.Provider) requestSeqRetirer {
-	return func(request *messages.Request) (new bool) {
-		clientID := request.Msg.ClientId
-		seq := request.Msg.Seq
+	return func(request messages.Request) (new bool) {
+		clientID := request.ClientID()
+		seq := request.Sequence()
 
 		if new, err := provideClientState(clientID).RetireRequestSeq(seq); err != nil {
 			panic(err)
@@ -329,8 +316,8 @@ func makeRequestTimeoutProvider(config api.Configer) requestTimeoutProvider {
 // makePrepareTimerStarter constructs an instance of
 // prepareTimerStarter.
 func makePrepareTimerStarter(provideClientState clientstate.Provider, logger *logging.Logger) prepareTimerStarter {
-	return func(request *messages.Request, view uint64) {
-		clientID := request.Msg.ClientId
+	return func(request messages.Request, view uint64) {
+		clientID := request.ClientID()
 
 		provideClientState(clientID).StartPrepareTimer(func() {
 			logger.Infof("Prepare timer expired: client=%d view=%d", clientID, view)

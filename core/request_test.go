@@ -44,24 +44,20 @@ func TestMakeRequestProcessor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	captureSeq := func(request *messages.Request) (new bool, release func()) {
+	captureSeq := func(request messages.Request) (new bool, release func()) {
 		args := mock.MethodCalled("requestSeqCapturer", request)
 		return args.Bool(0), func() {
 			mock.MethodCalled("requestSeqReleaser", request)
 		}
 	}
-	applyRequest := func(request *messages.Request) error {
+	applyRequest := func(request messages.Request) error {
 		args := mock.MethodCalled("requestApplier", request)
 		return args.Error(0)
 	}
 	pendingReq := mock_requestlist.NewMockList(ctrl)
 	process := makeRequestProcessor(captureSeq, pendingReq, applyRequest)
 
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			Seq: rand.Uint64(),
-		},
-	}
+	request := messageImpl.NewRequest(0, rand.Uint64(), nil)
 
 	mock.On("requestSeqCapturer", request).Return(false).Once()
 	new, err := process(request)
@@ -99,31 +95,20 @@ func TestMakeRequestApplier(t *testing.T) {
 			mock.MethodCalled("viewReleaser", view)
 		}
 	}
-	handleGeneratedUIMessage := func(msg messages.MessageWithUI) {
+	handleGeneratedUIMessage := func(msg messages.CertifiedMessage) {
 		mock.MethodCalled("generatedUIMessageHandler", msg)
 	}
 	startReqTimer := func(clientID uint32, view uint64) {
 		mock.MethodCalled("requestTimerStarter", clientID, view)
 	}
-	startPrepTimer := func(request *messages.Request, view uint64) {
+	startPrepTimer := func(request messages.Request, view uint64) {
 		mock.MethodCalled("prepareTimerStarter", request, view)
 	}
 	apply := makeRequestApplier(id, n, provideView, handleGeneratedUIMessage, startReqTimer, startPrepTimer)
 
 	clientID := rand.Uint32()
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: clientID,
-			Seq:      rand.Uint64(),
-		},
-	}
-	prepare := &messages.Prepare{
-		Msg: &messages.Prepare_M{
-			View:      ownView,
-			ReplicaId: id,
-			Request:   request,
-		},
-	}
+	request := messageImpl.NewRequest(clientID, rand.Uint64(), nil)
+	prepare := messageImpl.NewPrepare(id, ownView, request)
 
 	mock.On("viewProvider").Return(otherView).Once()
 	mock.On("requestTimerStarter", clientID, otherView).Once()
@@ -145,13 +130,9 @@ func TestMakeRequestValidator(t *testing.T) {
 	mock := new(testifymock.Mock)
 	defer mock.AssertExpectations(t)
 
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: rand.Uint32(),
-		},
-	}
+	request := messageImpl.NewRequest(0, rand.Uint64(), nil)
 
-	verify := func(msg messages.MessageWithSignature) error {
+	verify := func(msg messages.SignedMessage) error {
 		args := mock.MethodCalled("messageSignatureVerifier", msg)
 		return args.Error(0)
 	}
@@ -181,33 +162,18 @@ func TestMakeRequestExecutor(t *testing.T) {
 	rand.Read(expectedResult)
 	rand.Read(expectedSignature)
 
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: clientID,
-			Seq:      seq,
-			Payload:  expectedOperation,
-		},
-	}
-	expectedUnsignedReply := &messages.Reply{
-		Msg: &messages.Reply_M{
-			ReplicaId: replicaID,
-			ClientId:  clientID,
-			Seq:       seq,
-			Result:    expectedResult,
-		},
-	}
-	expectedSignedReply := &messages.Reply{
-		Msg:       expectedUnsignedReply.Msg,
-		Signature: expectedSignature,
-	}
+	request := messageImpl.NewRequest(clientID, seq, expectedOperation)
+	expectedUnsignedReply := messageImpl.NewReply(replicaID, clientID, seq, expectedResult)
+	expectedSignedReply := messageImpl.NewReply(replicaID, clientID, seq, expectedResult)
+	expectedSignedReply.SetSignature(expectedSignature)
 
 	execute := func(operation []byte) <-chan []byte {
 		args := mock.MethodCalled("operationExecutor", operation)
 		return args.Get(0).(chan []byte)
 	}
-	sign := func(msg messages.MessageWithSignature) {
+	sign := func(msg messages.SignedMessage) {
 		mock.MethodCalled("replicaMessageSigner", msg)
-		msg.AttachSignature(expectedSignature)
+		msg.SetSignature(expectedSignature)
 	}
 	handleGeneratedMessage := func(msg messages.ReplicaMessage) {
 		mock.MethodCalled("generatedMessageHandler", msg)
@@ -280,12 +246,7 @@ func TestMakeRequestSeqCapturer(t *testing.T) {
 	captureSeq := makeRequestSeqCapturer(provider)
 
 	seq := rand.Uint64()
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: expectedClientID,
-			Seq:      seq,
-		},
-	}
+	request := messageImpl.NewRequest(expectedClientID, seq, nil)
 
 	state.EXPECT().CaptureRequestSeq(seq).Return(false, nil)
 	new, _ := captureSeq(request)
@@ -310,12 +271,7 @@ func TestMakeRequestSeqPreparer(t *testing.T) {
 	prepareSeq := makeRequestSeqPreparer(provider)
 
 	seq := rand.Uint64()
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: expectedClientID,
-			Seq:      seq,
-		},
-	}
+	request := messageImpl.NewRequest(expectedClientID, seq, nil)
 
 	state.EXPECT().PrepareRequestSeq(seq).Return(false, fmt.Errorf("Error"))
 	assert.Panics(t, func() { prepareSeq(request) })
@@ -339,12 +295,7 @@ func TestMakeRequestSeqRetirer(t *testing.T) {
 	retireSeq := makeRequestSeqRetirer(provider)
 
 	seq := rand.Uint64()
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: expectedClientID,
-			Seq:      seq,
-		},
-	}
+	request := messageImpl.NewRequest(expectedClientID, seq, nil)
 
 	state.EXPECT().RetireRequestSeq(seq).Return(false, fmt.Errorf("Error"))
 	assert.Panics(t, func() { retireSeq(request) })
@@ -366,23 +317,13 @@ func TestMakeRequestReplier(t *testing.T) {
 	provider, state := setupClientStateProviderMock(t, ctrl, expectedClientID)
 
 	seq := rand.Uint64()
-	request := &messages.Request{
-		Msg: &messages.Request_M{
-			ClientId: expectedClientID,
-			Seq:      seq,
-		},
-	}
-	reply := &messages.Reply{
-		Msg: &messages.Reply_M{
-			ReplicaId: rand.Uint32(),
-			Seq:       seq,
-		},
-	}
+	request := messageImpl.NewRequest(expectedClientID, seq, nil)
+	reply := messageImpl.NewReply(rand.Uint32(), expectedClientID, seq, nil)
 
 	replier := makeRequestReplier(provider)
 
 	// Matching Reply sent after
-	in := make(chan *messages.Reply, 1)
+	in := make(chan messages.Reply, 1)
 	state.EXPECT().ReplyChannel(seq).Return(in)
 	out := replier(request)
 	in <- reply
@@ -392,7 +333,7 @@ func TestMakeRequestReplier(t *testing.T) {
 	assert.False(t, more, "Channel should be closed")
 
 	// Matching Reply sent before
-	in = make(chan *messages.Reply, 1)
+	in = make(chan messages.Reply, 1)
 	in <- reply
 	close(in)
 	state.EXPECT().ReplyChannel(seq).Return(in)
