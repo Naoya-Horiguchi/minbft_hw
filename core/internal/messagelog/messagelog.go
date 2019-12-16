@@ -21,6 +21,9 @@ package messagelog
 import (
 	"sync"
 
+	"fmt"
+	"crypto/sha1"
+
 	"github.com/hyperledger-labs/minbft/messages"
 )
 
@@ -42,6 +45,16 @@ type MessageLog interface {
 	Stream(done <-chan struct{}) <-chan messages.ReplicaMessage
 }
 
+type logEntry struct {
+	msgType int
+	otherNode int
+	msgHash []byte
+}
+
+type authenticator struct {
+	stub int
+}
+
 type messageLog struct {
 	lock sync.RWMutex
 
@@ -50,11 +63,22 @@ type messageLog struct {
 
 	// Buffered channels to notify about new messages
 	newAdded []chan<- struct{}
+
+	logseq uint64
+	entries map[uint64]logEntry
+	authenticators map[uint64]authenticator
 }
 
 // New creates a new instance of the message log.
 func New() MessageLog {
-	return &messageLog{}
+	entries := make(map[uint64]logEntry)
+	authenticators := make(map[uint64]authenticator)
+	s := "teststring"
+	h := sha1.New()
+	h.Write([]byte(s))
+	bs := h.Sum(nil)
+	fmt.Printf("---> s:%s, bs:%x\n", s, bs)
+	return &messageLog{entries: entries, authenticators: authenticators, logseq: uint64(0)}
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage) {
@@ -69,6 +93,14 @@ func (log *messageLog) Append(msg messages.ReplicaMessage) {
 		default:
 		}
 	}
+}
+
+func (log *messageLog) AppendPRlog(msg interface{}) {
+	log.lock.Lock()
+	defer log.lock.Unlock()
+
+	log.entries[log.logseq] = 
+	log.msgs = append(log.msgs, msg)
 }
 
 func (log *messageLog) Stream(done <-chan struct{}) <-chan messages.ReplicaMessage {
@@ -86,6 +118,7 @@ func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-
 	log.newAdded = append(log.newAdded, newAdded)
 	log.lock.Unlock()
 
+	fmt.Printf("asdf supplyMessage %d\n", len(log.msgs))
 	next := 0
 	for {
 		log.lock.RLock()

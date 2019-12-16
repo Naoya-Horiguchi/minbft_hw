@@ -228,7 +228,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 
 // makeMessageStreamHandler construct an instance of
 // messageStreamHandler using the supplied abstract handler.
-func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Logger) messageStreamHandler {
+func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Logger, log messagelog.MessageLog) messageStreamHandler {
 	return func(in <-chan []byte, reply chan<- []byte) {
 		for msgBytes := range in {
 			msg, err := messageImpl.NewFromBinary(msgBytes)
@@ -240,6 +240,7 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			msgStr := messageString(msg)
 
 			logger.Debugf("Received %s", msgStr)
+			log.AppendPRlog(msg)
 
 			if replyChan, new, err := handle(msg); err != nil {
 				logger.Warningf("Failed to handle %s: %s", msgStr, err)
@@ -526,6 +527,8 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 			}
 		case messages.ReplicaMessage:
 			log.Append(msg)
+			fmt.Printf("==> append to log \n")
+			log.Append(messages.WrapMessage(msg))
 		default:
 			panic("Unknown message type")
 		}
