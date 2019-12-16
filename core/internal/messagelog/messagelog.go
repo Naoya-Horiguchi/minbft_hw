@@ -23,6 +23,7 @@ import (
 
 	"fmt"
 	"crypto/sha1"
+	"encoding/binary"
 
 	"github.com/hyperledger-labs/minbft/messages"
 )
@@ -71,6 +72,7 @@ type messageLog struct {
 
 	logseq uint64
 	entries map[uint64]logEntry
+	hashValue map[uint64][]byte
 	// authenticators map[uint64]authenticator
 }
 
@@ -81,11 +83,21 @@ func getMsgHash(msg []byte) []byte {
 	return bs
 }
 
+func getNumBytes(i uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(1))
+	return b
+}
+
 // New creates a new instance of the message log.
 func New(id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
-	msgLog.logseq = uint64(0)
+	msgLog.logseq = uint64(1)
+	fmt.Printf("___%x\n", getMsgHash([]byte("seed")))
+	msgLog.hashValue = make(map[uint64][]byte)
+	msgLog.hashValue[uint64(0)] = getMsgHash([]byte("seed"))
+	fmt.Printf("<<<%x>>>\n", msgLog.hashValue[0])
 	msgLog.entries = make(map[uint64]logEntry)
 	return msgLog
 }
@@ -123,9 +135,16 @@ func makePRlogAppender(id uint32) prlogAppender {
 			msgHash: getMsgHash(msg),
 		}
 		log.entries[log.logseq] = *entry
+		x := append(log.hashValue[log.logseq - 1], getNumBytes(log.logseq)...)
+		x = append(x, getNumBytes(uint64(send))...)
+		x = append(x, msg...)
+		log.hashValue[log.logseq] = getMsgHash(x)
 		log.logseq++
 		for k, v := range log.entries {
 			fmt.Printf("??? log[%d] is %x\n", k, v)
+		}
+		for k, v := range log.hashValue {
+			fmt.Printf("??? hash[%d] is %x\n", k, v)
 		}
 	}
 }
