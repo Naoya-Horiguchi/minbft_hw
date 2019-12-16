@@ -238,11 +238,10 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			}
 
 			msgStr := messageString(msg)
-
 			logger.Debugf("Received %s", msgStr)
-			log.AppendPRlog(msgBytes)
-			log.AppendPRlog(msgBytes)
-			log.AppendPRlog(msgBytes)
+			if msgrep, ok := msg.(messages.ReplicaMessage); ok {
+				log.AppendPRlog(0, msgrep.ReplicaID(), msgBytes)
+			}
 
 			if replyChan, new, err := handle(msg); err != nil {
 				logger.Warningf("Failed to handle %s: %s", msgStr, err)
@@ -268,13 +267,12 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 // startPeerConnections initiates asynchronous message exchange with
 // peer replicas.
 func startPeerConnections(replicaID, n uint32, connector api.ReplicaConnector, log messagelog.MessageLog, logger *logging.Logger) error {
-	supply := makePeerMessageSupplier(log)
-
 	for peerID := uint32(0); peerID < n; peerID++ {
 		if peerID == replicaID {
 			continue
 		}
 
+		supply := makePeerMessageSupplier(log, peerID)
 		connect := makePeerConnector(peerID, connector)
 		if err := startPeerConnection(connect, supply); err != nil {
 			return fmt.Errorf("Cannot connect to replica %d: %s", peerID, err)
@@ -304,10 +302,11 @@ func startPeerConnection(connect peerConnector, supply peerMessageSupplier) erro
 
 // makePeerMessageSupplier construct a peerMessageSupplier using the
 // supplied message log.
-func makePeerMessageSupplier(log messagelog.MessageLog) peerMessageSupplier {
+func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessageSupplier {
 	return func(out chan<- []byte) {
 		for msg := range log.Stream(nil) {
 			msgBytes, err := msg.MarshalBinary()
+			log.AppendPRlog(1, peerID, msgBytes)
 			if err != nil {
 				panic(err)
 			}
@@ -528,7 +527,9 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
 		case messages.ReplicaMessage:
-			fmt.Printf("==> append to log \n")
+			fmt.Printf("==> append to log aaa\n")
+			msgbyte, _ := msg.MarshalBinary()
+			log.AppendPRlog(1, msg.ReplicaID(), msgbyte)
 			log.Append(msg)
 			// log.Append(messages.WrapMessage(msg))
 		default:

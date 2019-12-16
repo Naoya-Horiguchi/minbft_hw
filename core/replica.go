@@ -57,7 +57,7 @@ func New(id uint32, configer api.Configer, stack Stack, opts ...Option) (api.Rep
 
 	logOpts := newOptions(opts...)
 
-	messageLog := messagelog.New()
+	messageLog := messagelog.New(id)
 	logger := makeLogger(id, logOpts)
 
 	if err := startPeerConnections(id, n, stack, messageLog, logger); err != nil {

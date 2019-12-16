@@ -42,19 +42,21 @@ import (
 // passed if there's no need to close the returned channel.
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage)
-	AppendPRlog(msgbyte []byte)
+	AppendPRlog(send int, replicaID uint32, msgbyte []byte)
 	Stream(done <-chan struct{}) <-chan messages.ReplicaMessage
 }
 
 type logEntry struct {
 	msgType int
-	otherNode int
+	otherNode uint32
 	msgHash []byte
 }
 
 type authenticator struct {
 	stub int
 }
+
+type prlogAppender func(send int, replicaID uint32, msg []byte)
 
 type messageLog struct {
 	lock sync.RWMutex
@@ -65,7 +67,7 @@ type messageLog struct {
 	// Buffered channels to notify about new messages
 	newAdded []chan<- struct{}
 
-	AppendPRlog func(msg []byte)
+	appendPRlog prlogAppender
 }
 
 func getMsgHash(msg []byte) []byte {
@@ -76,9 +78,9 @@ func getMsgHash(msg []byte) []byte {
 }
 
 // New creates a new instance of the message log.
-func New() MessageLog {
-	msgLog := &messageLog{}
-	msgLog.AppendPRlog := makePRlogAppender()
+func New(id uint32) MessageLog {
+	appendPRlog := makePRlogAppender(id)
+	msgLog := &messageLog{appendPRlog: appendPRlog}
 	return msgLog
 }
 
@@ -96,19 +98,28 @@ func (log *messageLog) Append(msg messages.ReplicaMessage) {
 	}
 }
 
-func makePRlogAppender() func() {
+func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) {
+	// lock?
+	log.appendPRlog(send, replicaID, msg)
+}
+
+func makePRlogAppender(id uint32) prlogAppender {
 	var (
 		logseq uint64
-		entries map[uint64]logEntry
-		authenticators map[uint64]authenticator
+		entries = make(map[uint64]logEntry)
+		// authenticators map[uint64]authenticator
 	)
 
-	return func (msg []byte) {
+	return func (send int, replicaID uint32, msg []byte) {
 		// lock?
 
+		if replicaID == id {
+			return
+		}
+
 		entry := &logEntry{
-			msgType: 0,
-			otherNode: 1,
+			msgType: send,
+			otherNode: replicaID,
 			msgHash: getMsgHash(msg),
 		}
 		entries[logseq] = *entry
@@ -143,6 +154,7 @@ func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-
 		log.lock.RUnlock()
 
 		for _, msg := range msgs {
+			fmt.Printf("BOBO: %v\n", msg)
 			select {
 			case ch <- msg:
 			case <-done:
