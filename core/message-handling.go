@@ -240,7 +240,9 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			msgStr := messageString(msg)
 
 			logger.Debugf("Received %s", msgStr)
-			log.AppendPRlog(msg)
+			log.AppendPRlog(msgBytes)
+			log.AppendPRlog(msgBytes)
+			log.AppendPRlog(msgBytes)
 
 			if replyChan, new, err := handle(msg); err != nil {
 				logger.Warningf("Failed to handle %s: %s", msgStr, err)
@@ -526,9 +528,9 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
 		case messages.ReplicaMessage:
-			log.Append(msg)
 			fmt.Printf("==> append to log \n")
-			log.Append(messages.WrapMessage(msg))
+			log.Append(msg)
+			// log.Append(messages.WrapMessage(msg))
 		default:
 			panic("Unknown message type")
 		}

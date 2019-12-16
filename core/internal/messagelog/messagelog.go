@@ -42,6 +42,7 @@ import (
 // passed if there's no need to close the returned channel.
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage)
+	AppendPRlog(msgbyte []byte)
 	Stream(done <-chan struct{}) <-chan messages.ReplicaMessage
 }
 
@@ -64,9 +65,16 @@ type messageLog struct {
 	// Buffered channels to notify about new messages
 	newAdded []chan<- struct{}
 
-	logseq uint64
+	LogSeq uint64
 	entries map[uint64]logEntry
 	authenticators map[uint64]authenticator
+}
+
+func getMsgHash(msg []byte) []byte {
+	h := sha1.New()
+	h.Write(msg)
+	bs := h.Sum(nil)
+	return bs
 }
 
 // New creates a new instance of the message log.
@@ -77,8 +85,9 @@ func New() MessageLog {
 	h := sha1.New()
 	h.Write([]byte(s))
 	bs := h.Sum(nil)
+	// fmt.Printf("---> s:%s, bs:%x, getmsghash:%x\n", s, bs, getMsgHash(s))
 	fmt.Printf("---> s:%s, bs:%x\n", s, bs)
-	return &messageLog{entries: entries, authenticators: authenticators, logseq: uint64(0)}
+	return &messageLog{entries: entries, authenticators: authenticators, LogSeq: uint64(3)}
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage) {
@@ -95,12 +104,45 @@ func (log *messageLog) Append(msg messages.ReplicaMessage) {
 	}
 }
 
-func (log *messageLog) AppendPRlog(msg interface{}) {
+func makePRlogAppender() func() {
+	var (
+		logseq uint64
+		entries map[uint64]logEntry
+		authenticators map[uint64]authenticator
+	)
+
+	return func (msg []byte) {
+		// lock?
+
+		entry := &logEntry{
+			msgType: 0,
+			otherNode: 1,
+			msgHash: getMsgHash(msg),
+		}
+		entries[logseq] = *entry
+		logseq++
+		for k, v := range entries { 
+			fmt.Printf("??? log[%d] is %x\n", k, v)
+		}
+	}
+}
+
+func (log messageLog) AppendPRlog(msg []byte) {
 	log.lock.Lock()
 	defer log.lock.Unlock()
 
-	log.entries[log.logseq] = 
-	log.msgs = append(log.msgs, msg)
+	// entry := &logEntry{
+	// 	msgType: 0,
+	// 	otherNode: 1,
+	// 	msgHash: getMsgHash(msg),
+	// }
+	// log.entries[log.LogSeq] = *entry
+	// for k, v := range log.entries { 
+	// 	fmt.Printf("??? log[%d] is %x\n", k, v)
+	// }
+	// fmt.Printf("??? LogSeq %x\n", log.LogSeq)
+	// log.LogSeq++
+	// fmt.Printf("??? LogSeq %x\n", log.LogSeq)
 }
 
 func (log *messageLog) Stream(done <-chan struct{}) <-chan messages.ReplicaMessage {
