@@ -60,6 +60,12 @@ type CertifiedMessage interface {
 	SetUIBytes(ui []byte)
 }
 
+type AuditMessage interface {
+	ReplicaMessage
+	// ReplicaID() uint32
+	// Authenticator() ...
+}
+
 // SignedMessage represents a message signed with a normal signature.
 //
 // SginedPayload returns serialized message content signed with its

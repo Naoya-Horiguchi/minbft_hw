@@ -606,7 +606,7 @@ func TestMakeGeneratedMessageConsumer(t *testing.T) {
 		return clientState
 	}
 
-	consume := makeGeneratedMessageConsumer(log, clientStates)
+	consume := makeGeneratedMessageConsumer(*log, clientStates)
 
 	t.Run("Reply", func(t *testing.T) {
 		reply := messageImpl.NewReply(rand.Uint32(), clientID, rand.Uint64(), nil)

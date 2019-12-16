@@ -132,12 +132,12 @@ func makePRlogAppender(id uint32) prlogAppender {
 		entry := &logEntry{
 			msgType: send,
 			otherNode: replicaID,
-			msgHash: getMsgHash(msg),
+			msgHash: msg,
 		}
 		log.entries[log.logseq] = *entry
 		x := append(log.hashValue[log.logseq - 1], getNumBytes(log.logseq)...)
 		x = append(x, getNumBytes(uint64(send))...)
-		x = append(x, msg...)
+		x = append(x, getMsgHash(msg)...)
 		log.hashValue[log.logseq] = getMsgHash(x)
 		log.logseq++
 		for k, v := range log.entries {
