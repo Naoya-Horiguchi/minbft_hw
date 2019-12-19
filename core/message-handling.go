@@ -239,16 +239,16 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			}
 
 			msgStr := messageString(msg)
-			logger.Debugf("------------- %s", msgStr)
-			logger.Debugf("Receivaaed %v", msg)
-			switch msg := msg.(type) {
-			case messages.AuditMessage:
-				logger.Debugf("AAAAAAAAAAAAAUDT!!!!!!!!!! %v", msg)
-			case messages.Request:
-				logger.Debugf("AGGGGGGGGGGGGGGG!!!!! %v", msg)
-			}
+			// logger.Debugf("------------- %s", msgStr)
+			// logger.Debugf("Receivaaed %v", msg)
+			// switch msg := msg.(type) {
+			// case messages.AuditMessage:
+			// 	logger.Debugf("AAAAAAAAAAAAAUDT!!!!!!!!!! %v", msg)
+			// case messages.Request:
+			// 	logger.Debugf("AGGGGGGGGGGGGGGG!!!!! %v", msg)
+			// }
 			if msgaudit, ok := msg.(messages.AuditMessage); ok {
-				logger.Debugf("Received %v", msgaudit)
+				logger.Debugf("Received %v", messageString(msgaudit))
 				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
 				// extract replica message from AuditMessage
 				msgStr = string(msgaudit.ExtractMessage())
@@ -257,8 +257,8 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 					logger.Warningf("Failed to unmarshal message: %s", err)
 					continue
 				}
+				msgStr = messageString(msg)
 			}
-			logger.Debugf("Received xyz\n")
 
 			if replyChan, new, err := handle(msg); err != nil {
 				logger.Warningf("Failed to handle %s: %s", msgStr, err)
@@ -349,7 +349,7 @@ func makePeerConnector(peerID uint32, connector api.ReplicaConnector) peerConnec
 // supplied abstractions.
 func makeIncomingMessageHandler(validate messageValidator, process messageProcessor, reply messageReplier) incomingMessageHandler {
 	return func(msg messages.Message) (replyChan <-chan messages.Message, new bool, err error) {
-		fmt.Printf("----------> %v\n", msg)
+		// fmt.Printf("----------> %v\n", msg)
 		err = validate(msg)
 		if err != nil {
 			err = fmt.Errorf("Validation failed: %s", err)
@@ -548,7 +548,8 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
 			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
-			fmt.Printf("==> append to log aaa a %v\n", auditmsg)
+			// fmt.Printf("==> append to log aaa a %v\n", auditmsg)
+
 			// log.AppendPRlog(1, msg.ReplicaID(), msgbyte) // need this
 			// switch adf := auditmsg.(type) {
 			// case messages.Request:

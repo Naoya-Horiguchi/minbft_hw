@@ -154,12 +154,12 @@ func makePRlogAppender(id uint32) prlogAppender {
 		x = append(x, getMsgHash(msg)...)
 		log.hashValue[log.logseq] = getMsgHash(x)
 		log.logseq++
-		for k, v := range log.entries {
-			fmt.Printf("??? log[%d] is %x\n", k, v)
-		}
-		for k, v := range log.hashValue {
-			fmt.Printf("??? hash[%d] is %x\n", k, v)
-		}
+		// for k, v := range log.entries {
+		// 	fmt.Printf("??? log[%d] is %x\n", k, v)
+		// }
+		// for k, v := range log.hashValue {
+		// 	fmt.Printf("??? hash[%d] is %x\n", k, v)
+		// }
 	}
 }
 

@@ -53,6 +53,22 @@ func (m *audit) ReplicaID() uint32 {
 	return m.Msg.GetReplicaId()
 }
 
+func (m *audit) PeerID() uint32 {
+	return m.Msg.GetPeerId()
+}
+
+func (m *audit) PrevHash() []byte {
+	return m.Msg.GetPrevhash()
+}
+
+func (m *audit) Sequence() uint64 {
+	return m.Msg.GetSequence()
+}
+
+func (m *audit) Authenticator() []byte {
+	return m.Msg.GetAuthenticator()
+}
+
 func (m *audit) ExtractMessage() []byte {
 	return m.Msg.Msg
 }
