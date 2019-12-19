@@ -26,6 +26,7 @@ type MessageImpl interface {
 	NewPrepare(replicaID uint32, view uint64, request Request) Prepare
 	NewCommit(replicaID uint32, prepare Prepare) Commit
 	NewReply(replicaID, clientID uint32, sequence uint64, result []byte) Reply
+	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
 }
 
 type Message interface {
@@ -58,12 +59,6 @@ type CertifiedMessage interface {
 	CertifiedPayload() []byte
 	UIBytes() []byte
 	SetUIBytes(ui []byte)
-}
-
-type AuditMessage interface {
-	ReplicaMessage
-	// ReplicaID() uint32
-	// Authenticator() ...
 }
 
 // SignedMessage represents a message signed with a normal signature.
@@ -104,4 +99,10 @@ type Reply interface {
 	Sequence() uint64
 	Result() []byte
 	ImplementsReply()
+}
+
+type AuditMessage interface {
+	ReplicaMessage
+	ImplementsAuditMessage()
+	ExtractMessage() []byte
 }

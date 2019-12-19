@@ -102,6 +102,9 @@ func messageString(msg interface{}) string {
 	case messages.Commit:
 		return fmt.Sprintf("COMMIT<cv=%d replica=%d prepare=%s>",
 			cv, msg.ReplicaID(), messageString(msg.Prepare()))
+	case messages.AuditMessage:
+		return fmt.Sprintf("AUDIT<cv=%d replica=%d prepare=%s>",
+			cv, msg.ReplicaID())
 	}
 	return "(unknown message)"
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger-labs/minbft/core/internal/requestlist"
 	"github.com/hyperledger-labs/minbft/core/internal/viewstate"
 	"github.com/hyperledger-labs/minbft/messages"
+	// "github.com/hyperledger-labs/minbft/messages/protobuf"
 )
 
 // messageStreamHandler fetches serialized messages from in channel,
@@ -180,7 +181,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 		return applyReplicaMessage(msg)
 	}
 
-	consumeGeneratedMessage := makeGeneratedMessageConsumer(log, clientStates)
+	consumeGeneratedMessage := makeGeneratedMessageConsumer(id, log, clientStates)
 	handleGeneratedMessage := makeGeneratedMessageHandler(applyReplicaMessageThunk, consumeGeneratedMessage, logger)
 	handleGeneratedUIMessage := makeGeneratedUIMessageHandler(assignUI, handleGeneratedMessage)
 
@@ -238,10 +239,26 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			}
 
 			msgStr := messageString(msg)
-			logger.Debugf("Received %s", msgStr)
-			if msgrep, ok := msg.(messages.ReplicaMessage); ok {
-				log.AppendPRlog(0, msgrep.ReplicaID(), msgBytes)
+			logger.Debugf("------------- %s", msgStr)
+			logger.Debugf("Receivaaed %v", msg)
+			switch msg := msg.(type) {
+			case messages.AuditMessage:
+				logger.Debugf("AAAAAAAAAAAAAUDT!!!!!!!!!! %v", msg)
+			case messages.Request:
+				logger.Debugf("AGGGGGGGGGGGGGGG!!!!! %v", msg)
 			}
+			if msgaudit, ok := msg.(messages.AuditMessage); ok {
+				logger.Debugf("Received %v", msgaudit)
+				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
+				// extract replica message from AuditMessage
+				msgStr = string(msgaudit.ExtractMessage())
+				msg, err = messageImpl.NewFromBinary([]byte(msgStr))
+				if err != nil {
+					logger.Warningf("Failed to unmarshal message: %s", err)
+					continue
+				}
+			}
+			logger.Debugf("Received xyz\n")
 
 			if replyChan, new, err := handle(msg); err != nil {
 				logger.Warningf("Failed to handle %s: %s", msgStr, err)
@@ -332,6 +349,7 @@ func makePeerConnector(peerID uint32, connector api.ReplicaConnector) peerConnec
 // supplied abstractions.
 func makeIncomingMessageHandler(validate messageValidator, process messageProcessor, reply messageReplier) incomingMessageHandler {
 	return func(msg messages.Message) (replyChan <-chan messages.Message, new bool, err error) {
+		fmt.Printf("----------> %v\n", msg)
 		err = validate(msg)
 		if err != nil {
 			err = fmt.Errorf("Validation failed: %s", err)
@@ -517,7 +535,7 @@ func makeGeneratedUIMessageHandler(assignUI uiAssigner, handle generatedMessageH
 	}
 }
 
-func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstate.Provider) generatedMessageConsumer {
+func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider clientstate.Provider) generatedMessageConsumer {
 	return func(msg messages.ReplicaMessage) {
 		switch msg := msg.(type) {
 		case messages.Reply:
@@ -527,11 +545,30 @@ func makeGeneratedMessageConsumer(log messagelog.MessageLog, provider clientstat
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
 		case messages.ReplicaMessage:
-			fmt.Printf("==> append to log aaa\n")
+			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
-			log.AppendPRlog(1, msg.ReplicaID(), msgbyte)
-			log.Append(msg)
-			// log.Append(messages.WrapMessage(msg))
+			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
+			fmt.Printf("==> append to log aaa a %v\n", auditmsg)
+			// log.AppendPRlog(1, msg.ReplicaID(), msgbyte) // need this
+			// switch adf := auditmsg.(type) {
+			// case messages.Request:
+			// 	fmt.Printf("dddddddddd1111111 %v\n", adf)
+			// case messages.AuditMessage:
+			// 	fmt.Printf("ddddddddddssssss2222222222 %v\n", adf)
+			// 	msgbyte, _ = auditmsg.MarshalBinary()
+
+			// 	msg2, _ := messageImpl.NewFromBinary(msgbyte)
+			// 	fmt.Printf("----------ddd--- %v\n", msg2)
+			// 	switch msg2 := msg2.(type) {
+			// 	case messages.AuditMessage:
+			// 		fmt.Printf("AADDDDDDDDDDDDDDDDD!!!!! %v", msg2)
+			// 	case messages.Request:
+			// 		fmt.Printf("AGGGmmmmmmmmmmmmmm!!!!! %v", msg2)
+			// 	}
+			// }
+			// log.Append(msgbyte)
+			log.Append(auditmsg)
+			// log.Append(msg)
 		default:
 			panic("Unknown message type")
 		}

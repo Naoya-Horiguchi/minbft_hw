@@ -45,6 +45,9 @@ type MessageLog interface {
 	Append(msg messages.ReplicaMessage)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte)
 	Stream(done <-chan struct{}) <-chan messages.ReplicaMessage
+
+	GetSequence() uint64
+	GetLatestHash(i uint64) []byte
 }
 
 type logEntry struct {
@@ -116,6 +119,17 @@ func (log *messageLog) Append(msg messages.ReplicaMessage) {
 	}
 }
 
+func (log *messageLog) GetSequence() uint64 {
+	// lock?
+	return log.logseq
+}
+
+func (log *messageLog) GetLatestHash(i uint64) []byte {
+	// lock?
+	// TODO: null check
+	return log.hashValue[log.logseq - i]
+}
+
 func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) {
 	// lock?
 	log.appendPRlog(log, send, replicaID, msg)
@@ -164,7 +178,7 @@ func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-
 	log.newAdded = append(log.newAdded, newAdded)
 	log.lock.Unlock()
 
-	fmt.Printf("asdf supplyMessage %d\n", len(log.msgs))
+	// fmt.Printf("asdf supplyMessage %d\n", len(log.msgs))
 	next := 0
 	for {
 		log.lock.RLock()

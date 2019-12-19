@@ -25,6 +25,7 @@ message Message{
         Reply reply = 2;
         Prepare prepare = 3;
         Commit commit = 4;
+        Audit audit = 5;
     }
 }
 
@@ -90,18 +91,13 @@ message Commit {
 }
 
 message Audit {    
-//    message M {
-//        uint32 replica_id = 1;   // s_i: replica id
-//        uint32 peer_id = 2;      // s_j: primary id
-//        oneof msgcontent {
-//            uint32 nullmessage = 3;
-//            Prepare prepmsg = 4;
-//            Commit commsg = 5;
-//        }
-//        bytes authonticator = 6; // UI_i: primary UI
-//    }
-    Message msg = 1;
-    bytes prevhash = 2;
-    uint64 sequence = 3;
-    bytes authenticator = 4;
+    message M {
+        uint32 replica_id = 1;   // s_i: replica id
+        uint32 peer_id = 2;      // s_j: primary id
+        bytes msg = 3;
+        bytes prevhash = 4;
+        uint64 sequence = 5;
+        bytes authenticator = 6;
+    }
+    M msg = 1;
 }

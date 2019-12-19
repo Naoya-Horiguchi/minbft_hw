@@ -15,6 +15,8 @@
 package protobuf
 
 import (
+	// "fmt"
+
 	"github.com/golang/protobuf/proto"
 
 	// "github.com/hyperledger-labs/minbft/messages"
@@ -24,17 +26,19 @@ type audit struct {
 	Audit
 }
 
-func newAuditMessage() *audit {
+func newAudit() *audit {
 	return &audit{}
 }
 
-func (m *audit) init(msg *Message, prevhash []byte, seq uint64, auth []byte) {
-	m.Audit = Audit{
+func (m *audit) init(r, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) {
+	m.Audit = Audit{Msg: &Audit_M{
+		ReplicaId: r,
+		PeerId: peerID,
 		Msg: msg,
 		Prevhash: prevhash,
 		Sequence: seq,
 		Authenticator: auth,
-	}
+	}}
 }
 
 func (m *audit) set(pbMsg *Audit) {
@@ -42,31 +46,16 @@ func (m *audit) set(pbMsg *Audit) {
 }
 
 func (m *audit) MarshalBinary() ([]byte, error) {
-	return proto.Marshal(m)
+	return proto.Marshal(&Message{Type: &Message_Audit{Audit: &m.Audit}})
 }
 
-// func (m *audit) ReplicaID() uint32 {
-// 	return m.Msg.GetReplicaId()
-// }
+func (m *audit) ReplicaID() uint32 {
+	return m.Msg.GetReplicaId()
+}
 
-// func (m *audit) View() uint64 {
-// 	return m.Msg.GetView()
-// }
+func (m *audit) ExtractMessage() []byte {
+	return m.Msg.Msg
+}
 
-// func (m *audit) Request() messages.Request {
-// 	req := newRequest()
-// 	req.set(m.Msg.GetRequest())
-// 	return req
-// }
-
-// func (m *audit) CertifiedPayload() []byte {
-// 	return MarshalOrPanic(m.Msg)
-// }
-
-// func (m *audit) UIBytes() []byte {
-// 	return m.ReplicaUi
-// }
-
-// func (m *audit) SetUIBytes(uiBytes []byte) {
-// 	m.ReplicaUi = uiBytes
-// }
+func (audit) ImplementsReplicaMessage() {}
+func (audit) ImplementsAuditMessage() {}
