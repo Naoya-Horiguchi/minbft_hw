@@ -104,7 +104,7 @@ func messageString(msg interface{}) string {
 			cv, msg.ReplicaID(), messageString(msg.Prepare()))
 	case messages.AuditMessage:
 		return fmt.Sprintf("AUDIT<cv=%d replica=%d peer=%d prevhash=%s seq=%d auth=%s>",
-			cv, msg.ReplicaID(), msg.PeerID(), shortString(string(msg.PrevHash())), msg.Sequence(), shortString(string(msg.Authenticator())))
+			cv, msg.ReplicaID(), msg.PeerID(), shortString(string(msg.PrevHash()), logMaxStringWidth), msg.Sequence(), shortString(string(msg.Authenticator()), logMaxStringWidth))
 	}
 	return "(unknown message)"
 }

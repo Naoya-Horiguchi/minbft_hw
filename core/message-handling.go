@@ -321,7 +321,7 @@ func startPeerConnection(connect peerConnector, supply peerMessageSupplier) erro
 // supplied message log.
 func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessageSupplier {
 	return func(out chan<- []byte) {
-		for msg := range log.Stream(nil) {
+		for msg := range log.Stream(peerID, nil) {
 			msgBytes, err := msg.MarshalBinary()
 			log.AppendPRlog(1, peerID, msgBytes)
 			if err != nil {
@@ -568,7 +568,7 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// 	}
 			// }
 			// log.Append(msgbyte)
-			log.Append(auditmsg)
+			log.Append(auditmsg, id, 100)
 			// log.Append(msg)
 		default:
 			panic("Unknown message type")

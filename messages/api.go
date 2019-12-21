@@ -114,8 +114,7 @@ type AuditMessage interface {
 
 type Acknowledge interface {
 	ReplicaMessage
-	ImplementsAuditMessage()
-	ExtractMessage() []byte
+	ImplementsAcknowledge()
 	PeerID() uint32
 	PrevHash() []byte
 	Sequence() uint64

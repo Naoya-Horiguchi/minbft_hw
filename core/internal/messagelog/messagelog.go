@@ -42,9 +42,9 @@ import (
 // indicates the returned channel should be closed. Nil channel may be
 // passed if there's no need to close the returned channel.
 type MessageLog interface {
-	Append(msg messages.ReplicaMessage)
+	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte)
-	Stream(done <-chan struct{}) <-chan messages.ReplicaMessage
+	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -69,7 +69,7 @@ type messageLog struct {
 	msgs []messages.ReplicaMessage
 
 	// Buffered channels to notify about new messages
-	newAdded []chan<- struct{}
+	newAdded map[uint32]chan<-struct{}
 
 	appendPRlog prlogAppender
 
@@ -96,6 +96,7 @@ func getNumBytes(i uint64) []byte {
 func New(id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
+	msgLog.newAdded = make(map[uint32](chan<-struct{}))
 	msgLog.logseq = uint64(1)
 	fmt.Printf("___%x\n", getMsgHash([]byte("seed")))
 	msgLog.hashValue = make(map[uint64][]byte)
@@ -105,13 +106,18 @@ func New(id uint32) MessageLog {
 	return msgLog
 }
 
-func (log *messageLog) Append(msg messages.ReplicaMessage) {
+func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uint32) {
 	log.lock.Lock()
 	defer log.lock.Unlock()
 
+	fmt.Printf("--& append %v\n", msg)
 	log.msgs = append(log.msgs, msg)
 
-	for _, newAdded := range log.newAdded {
+	for key, newAdded := range log.newAdded {
+		if key > 100 && id != peerID {
+			continue
+		}
+		fmt.Printf("abc %v\n", newAdded)
 		select {
 		case newAdded <- struct{}{}:
 		default:
@@ -153,6 +159,7 @@ func makePRlogAppender(id uint32) prlogAppender {
 		x = append(x, getNumBytes(uint64(send))...)
 		x = append(x, getMsgHash(msg)...)
 		log.hashValue[log.logseq] = getMsgHash(x)
+		fmt.Printf("??? PRlog seq:%d, send:%d, target:%d\n", log.logseq, send, replicaID)
 		log.logseq++
 		// for k, v := range log.entries {
 		// 	fmt.Printf("??? log[%d] is %x\n", k, v)
@@ -163,19 +170,19 @@ func makePRlogAppender(id uint32) prlogAppender {
 	}
 }
 
-func (log *messageLog) Stream(done <-chan struct{}) <-chan messages.ReplicaMessage {
+func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
 	ch := make(chan messages.ReplicaMessage)
-	go log.supplyMessages(ch, done)
+	go log.supplyMessages(id, ch, done)
 
 	return ch
 }
 
-func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-chan struct{}) {
+func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessage, done <-chan struct{}) {
 	defer close(ch)
 
 	newAdded := make(chan struct{}, 1)
 	log.lock.Lock()
-	log.newAdded = append(log.newAdded, newAdded)
+	log.newAdded[id] = newAdded
 	log.lock.Unlock()
 
 	// fmt.Printf("asdf supplyMessage %d\n", len(log.msgs))
@@ -186,6 +193,7 @@ func (log *messageLog) supplyMessages(ch chan<- messages.ReplicaMessage, done <-
 		next = len(log.msgs)
 		log.lock.RUnlock()
 
+		fmt.Printf("BOBO: %v\n", len(msgs))
 		for _, msg := range msgs {
 			// fmt.Printf("BOBO: %v\n", msg)
 			select {

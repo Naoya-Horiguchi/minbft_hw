@@ -94,3 +94,9 @@ func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, 
 	m.init(r, p, msgbyte, prevhash, seq, auth)
 	return m
 }
+
+func (*impl) NewAcknowledge(r, p uint32, prevhash []byte, seq uint64, auth []byte) messages.Acknowledge {
+	m := newAcknowledge()
+	m.init(r, p, prevhash, seq, auth)
+	return m
+}
