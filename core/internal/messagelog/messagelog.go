@@ -98,10 +98,9 @@ func New(id uint32) MessageLog {
 	msgLog := &messageLog{appendPRlog: appendPRlog}
 	msgLog.newAdded = make(map[uint32](chan<-struct{}))
 	msgLog.logseq = uint64(1)
-	fmt.Printf("___%x\n", getMsgHash([]byte("seed")))
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = getMsgHash([]byte("seed"))
-	fmt.Printf("<<<%x>>>\n", msgLog.hashValue[0])
+	// fmt.Printf("<<<%x>>>\n", msgLog.hashValue[0])
 	msgLog.entries = make(map[uint64]logEntry)
 	return msgLog
 }
@@ -110,14 +109,16 @@ func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uin
 	log.lock.Lock()
 	defer log.lock.Unlock()
 
-	fmt.Printf("--& append %v\n", msg)
 	log.msgs = append(log.msgs, msg)
 
 	for key, newAdded := range log.newAdded {
-		if key > 100 && id != peerID {
+		if peerID < 100 && key != peerID {
+			// fmt.Printf("--> Filter msg for replica: %d\n", key)
 			continue
+		// } else {
+		// 	fmt.Printf("--> Send msg to replica %d\n", peerID)
 		}
-		fmt.Printf("abc %v\n", newAdded)
+		// fmt.Printf("abc %v\n", newAdded)
 		select {
 		case newAdded <- struct{}{}:
 		default:
@@ -159,7 +160,7 @@ func makePRlogAppender(id uint32) prlogAppender {
 		x = append(x, getNumBytes(uint64(send))...)
 		x = append(x, getMsgHash(msg)...)
 		log.hashValue[log.logseq] = getMsgHash(x)
-		fmt.Printf("??? PRlog seq:%d, send:%d, target:%d\n", log.logseq, send, replicaID)
+		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		log.logseq++
 		// for k, v := range log.entries {
 		// 	fmt.Printf("??? log[%d] is %x\n", k, v)
@@ -193,9 +194,7 @@ func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessa
 		next = len(log.msgs)
 		log.lock.RUnlock()
 
-		fmt.Printf("BOBO: %v\n", len(msgs))
 		for _, msg := range msgs {
-			// fmt.Printf("BOBO: %v\n", msg)
 			select {
 			case ch <- msg:
 			case <-done:

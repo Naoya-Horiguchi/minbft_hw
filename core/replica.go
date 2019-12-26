@@ -65,7 +65,7 @@ func New(id uint32, configer api.Configer, stack Stack, opts ...Option) (api.Rep
 	}
 
 	handle := defaultIncomingMessageHandler(id, messageLog, configer, stack, logger)
-	handleStream := makeMessageStreamHandler(handle, logger, messageLog)
+	handleStream := makeMessageStreamHandler(id, handle, logger, messageLog)
 
 	return &replica{handleStream}, nil
 }

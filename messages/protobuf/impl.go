@@ -36,27 +36,26 @@ func (*impl) NewFromBinary(data []byte) (messages.Message, error) {
 
 	switch t := msg.Type.(type) {
 	case *Message_Audit:
-		fmt.Printf("AAA1\n")
 		audit := newAudit()
 		audit.set(t.Audit)
 		return audit, nil
+	case *Message_Acknowledge:
+		acknowledge := newAcknowledge()
+		acknowledge.set(t.Acknowledge)
+		return acknowledge, nil
 	case *Message_Prepare:
-		fmt.Printf("AAA3\n")
 		prep := newPrepare()
 		prep.set(t.Prepare)
 		return prep, nil
 	case *Message_Request:
-		fmt.Printf("AAA2\n")
 		req := newRequest()
 		req.set(t.Request)
 		return req, nil
 	case *Message_Commit:
-		fmt.Printf("AAA4\n")
 		comm := newCommit()
 		comm.set(t.Commit)
 		return comm, nil
 	case *Message_Reply:
-		fmt.Printf("AAA5\n")
 		reply := newReply()
 		reply.set(t.Reply)
 		return reply, nil

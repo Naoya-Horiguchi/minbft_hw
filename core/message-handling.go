@@ -229,7 +229,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 
 // makeMessageStreamHandler construct an instance of
 // messageStreamHandler using the supplied abstract handler.
-func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Logger, log messagelog.MessageLog) messageStreamHandler {
+func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *logging.Logger, log messagelog.MessageLog) messageStreamHandler {
 	return func(in <-chan []byte, reply chan<- []byte) {
 		for msgBytes := range in {
 			msg, err := messageImpl.NewFromBinary(msgBytes)
@@ -248,9 +248,6 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 			// 	logger.Debugf("AGGGGGGGGGGGGGGG!!!!! %v", msg)
 			// }
 			if msgaudit, ok := msg.(messages.AuditMessage); ok {
-				logger.Debugf("Received %v", messageString(msgaudit))
-				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
-				// extract replica message from AuditMessage
 				msgStr = string(msgaudit.ExtractMessage())
 				msg, err = messageImpl.NewFromBinary([]byte(msgStr))
 				if err != nil {
@@ -258,6 +255,20 @@ func makeMessageStreamHandler(handle incomingMessageHandler, logger *logging.Log
 					continue
 				}
 				msgStr = messageString(msg)
+				logger.Debugf("Received %v", msgStr)
+				log.AppendPRlog(0, msgaudit.ReplicaID(), []byte(msgStr))
+				// extract replica message from AuditMessage
+
+				// Check signature ...
+
+				// send back ack
+				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
+				logger.Debugf("Send back Acknowledge to %d\n", msgaudit.ReplicaID())
+				// myID, targetID
+				log.Append(ackmsg, id, msgaudit.ReplicaID())
+			} else if msgack, ok := msg.(messages.Acknowledge); ok {
+				logger.Debugf("Received Ack from %d\n", msgack.ReplicaID());
+				continue
 			}
 
 			if replyChan, new, err := handle(msg); err != nil {
@@ -548,8 +559,20 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
 			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
-			// fmt.Printf("==> append to log aaa a %v\n", auditmsg)
 
+			switch msg.(type) {
+			case messages.Prepare:
+				fmt.Printf("broadcast Prepare message\n")
+			case messages.Commit:
+				fmt.Printf("broadcast Commit message\n")
+			}
+			// switch auditmsg.(type) {
+			// case messages.AuditMessage:
+			// 	fmt.Printf("broadcast Audit message\n")
+			// }
+			log.Append(auditmsg, id, 100)
+
+			// fmt.Printf("==> append to log aaa a %v\n", auditmsg)
 			// log.AppendPRlog(1, msg.ReplicaID(), msgbyte) // need this
 			// switch adf := auditmsg.(type) {
 			// case messages.Request:
@@ -568,8 +591,8 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// 	}
 			// }
 			// log.Append(msgbyte)
-			log.Append(auditmsg, id, 100)
-			// log.Append(msg)
+
+			// log.Append(auditmsg, id, 1)
 		default:
 			panic("Unknown message type")
 		}
