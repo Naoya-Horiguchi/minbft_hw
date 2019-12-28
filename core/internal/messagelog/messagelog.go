@@ -69,7 +69,7 @@ type messageLog struct {
 	msgs []messages.ReplicaMessage
 
 	// Buffered channels to notify about new messages
-	newAdded map[uint32]chan<-struct{}
+	newAdded map[uint32]chan<-bool
 
 	appendPRlog prlogAppender
 
@@ -96,7 +96,7 @@ func getNumBytes(i uint64) []byte {
 func New(id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
-	msgLog.newAdded = make(map[uint32](chan<-struct{}))
+	msgLog.newAdded = make(map[uint32](chan<-bool))
 	msgLog.logseq = uint64(1)
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = getMsgHash([]byte("seed"))
@@ -114,14 +114,19 @@ func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uin
 	for key, newAdded := range log.newAdded {
 		if peerID < 100 && key != peerID {
 			// fmt.Printf("--> Filter msg for replica: %d\n", key)
-			continue
+			select {
+			case newAdded <- false:
+			default:
+			}
+			// continue
 		// } else {
 		// 	fmt.Printf("--> Send msg to replica %d\n", peerID)
-		}
-		// fmt.Printf("abc %v\n", newAdded)
-		select {
-		case newAdded <- struct{}{}:
-		default:
+		} else {
+			// fmt.Printf("abc %v\n", newAdded)
+			select {
+			case newAdded <- true:
+			default:
+			}
 		}
 	}
 }
@@ -181,7 +186,7 @@ func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.R
 func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessage, done <-chan struct{}) {
 	defer close(ch)
 
-	newAdded := make(chan struct{}, 1)
+	newAdded := make(chan bool, 1)
 	log.lock.Lock()
 	log.newAdded[id] = newAdded
 	log.lock.Unlock()
@@ -203,7 +208,11 @@ func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessa
 		}
 
 		select {
-		case <-newAdded:
+		case b := <-newAdded:
+			// fmt.Printf("newAdded event %v for id:%d\n", b, id)
+			if b != true {
+				next++
+			}
 		case <-done:
 			return
 		}

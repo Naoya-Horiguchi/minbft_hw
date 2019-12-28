@@ -334,7 +334,10 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 	return func(out chan<- []byte) {
 		for msg := range log.Stream(peerID, nil) {
 			msgBytes, err := msg.MarshalBinary()
-			log.AppendPRlog(1, peerID, msgBytes)
+			switch msg.(type) {
+			case messages.AuditMessage:
+				log.AppendPRlog(1, peerID, msgBytes)
+			}
 			if err != nil {
 				panic(err)
 			}
@@ -560,12 +563,12 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			msgbyte, _ := msg.MarshalBinary()
 			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
 
-			switch msg.(type) {
-			case messages.Prepare:
-				fmt.Printf("broadcast Prepare message\n")
-			case messages.Commit:
-				fmt.Printf("broadcast Commit message\n")
-			}
+			// switch msg.(type) {
+			// case messages.Prepare:
+			// 	fmt.Printf("broadcast Prepare message\n")
+			// case messages.Commit:
+			// 	fmt.Printf("broadcast Commit message\n")
+			// }
 			// switch auditmsg.(type) {
 			// case messages.AuditMessage:
 			// 	fmt.Printf("broadcast Audit message\n")
