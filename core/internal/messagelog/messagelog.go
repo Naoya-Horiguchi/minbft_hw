@@ -93,7 +93,7 @@ func getNumBytes(i uint64) []byte {
 }
 
 // New creates a new instance of the message log.
-func New(id uint32) MessageLog {
+func New(n, id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
 	msgLog.newAdded = make(map[uint32](chan<-bool))

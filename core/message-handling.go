@@ -19,6 +19,7 @@ package minbft
 import (
 	"fmt"
 	"sync"
+	"encoding/binary"
 
 	logging "github.com/op/go-logging"
 
@@ -181,7 +182,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 		return applyReplicaMessage(msg)
 	}
 
-	consumeGeneratedMessage := makeGeneratedMessageConsumer(id, log, clientStates)
+	consumeGeneratedMessage := makeGeneratedMessageConsumer(id, log, clientStates, stack)
 	handleGeneratedMessage := makeGeneratedMessageHandler(applyReplicaMessageThunk, consumeGeneratedMessage, logger)
 	handleGeneratedUIMessage := makeGeneratedUIMessageHandler(assignUI, handleGeneratedMessage)
 
@@ -229,7 +230,7 @@ func defaultIncomingMessageHandler(id uint32, log messagelog.MessageLog, config 
 
 // makeMessageStreamHandler construct an instance of
 // messageStreamHandler using the supplied abstract handler.
-func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *logging.Logger, log messagelog.MessageLog) messageStreamHandler {
+func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *logging.Logger, log messagelog.MessageLog, authenticator api.Authenticator) messageStreamHandler {
 	return func(in <-chan []byte, reply chan<- []byte) {
 		for msgBytes := range in {
 			msg, err := messageImpl.NewFromBinary(msgBytes)
@@ -260,6 +261,14 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				// extract replica message from AuditMessage
 
 				// Check signature ...
+				b := make([]byte, 8)
+				binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
+				b = append(b, msgaudit.PrevHash()...)
+				logger.Debugf("-- payload %v, auth %v\n", b, msgaudit.Authenticator())
+				if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
+					logger.Errorf("Failed verifying authenticator: %s", err)
+					continue
+				}
 
 				// send back ack
 				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
@@ -549,7 +558,7 @@ func makeGeneratedUIMessageHandler(assignUI uiAssigner, handle generatedMessageH
 	}
 }
 
-func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider clientstate.Provider) generatedMessageConsumer {
+func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider clientstate.Provider, authenticator api.Authenticator) generatedMessageConsumer {
 	return func(msg messages.ReplicaMessage) {
 		switch msg := msg.(type) {
 		case messages.Reply:
@@ -561,7 +570,15 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 		case messages.ReplicaMessage:
 			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
-			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
+			// auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, log.GetSequence())
+			b = append(b, log.GetLatestHash(log.GetSequence())...)
+			signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
+			if err != nil {
+				panic(err) // Supplied Authenticator must be able to sing
+			}
+			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(log.GetSequence()), log.GetSequence(), signature)
 
 			// switch msg.(type) {
 			// case messages.Prepare:
