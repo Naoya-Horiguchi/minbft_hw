@@ -51,6 +51,8 @@ type incomingMessageHandler func(msg messages.Message) (reply <-chan messages.Me
 // delivered to the peer replica.
 type peerMessageSupplier func(out chan<- []byte)
 
+type peerMessageSender func(out chan<- []byte)
+
 // peerConnector initiates message exchange with a peer replica.
 //
 // Given a channel of outgoing messages to supply to the replica, it
@@ -309,9 +311,10 @@ func startPeerConnections(replicaID, n uint32, connector api.ReplicaConnector, l
 			continue
 		}
 
+		sender := makePeerMessageSender(log, peerID)
 		supply := makePeerMessageSupplier(log, peerID)
 		connect := makePeerConnector(peerID, connector)
-		if err := startPeerConnection(connect, supply); err != nil {
+		if err := startPeerConnection(connect, sender, supply); err != nil {
 			return fmt.Errorf("Cannot connect to replica %d: %s", peerID, err)
 		}
 	}
@@ -321,7 +324,7 @@ func startPeerConnections(replicaID, n uint32, connector api.ReplicaConnector, l
 
 // startPeerConnection initiates asynchronous message exchange with a
 // peer replica.
-func startPeerConnection(connect peerConnector, supply peerMessageSupplier) error {
+func startPeerConnection(connect peerConnector, sender peerMessageSender, supply peerMessageSupplier) error {
 	out := make(chan []byte)
 
 	// So far, reply stream is not used for replica-to-replica
@@ -333,8 +336,26 @@ func startPeerConnection(connect peerConnector, supply peerMessageSupplier) erro
 	}
 
 	go supply(out)
+	// go sender(out)
 
 	return nil
+}
+
+// makePeerMessageSender ...
+func makePeerMessageSender(log messagelog.MessageLog, peerID uint32) peerMessageSender {
+	return func(out chan<- []byte) {
+		for msg := range log.Stream(peerID, nil) {
+			msgBytes, err := msg.MarshalBinary()
+			switch msg.(type) {
+			case messages.AuditMessage:
+				log.AppendPRlog(1, peerID, msgBytes)
+			}
+			if err != nil {
+				panic(err)
+			}
+			out <- msgBytes
+		}
+	}
 }
 
 // makePeerMessageSupplier construct a peerMessageSupplier using the
@@ -590,6 +611,7 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// case messages.AuditMessage:
 			// 	fmt.Printf("broadcast Audit message\n")
 			// }
+			// fmt.Printf("DEBBBUGG! id%d\n", id)
 			log.Append(auditmsg, id, 100)
 
 			// fmt.Printf("==> append to log aaa a %v\n", auditmsg)

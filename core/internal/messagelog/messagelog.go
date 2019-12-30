@@ -66,13 +66,14 @@ type messageLog struct {
 	lock sync.RWMutex
 
 	// Messages in order added
-	msgs []messages.ReplicaMessage
+	msgs map[uint32]([]messages.ReplicaMessage)
 
 	// Buffered channels to notify about new messages
 	newAdded map[uint32]chan<-bool
 
 	appendPRlog prlogAppender
 
+	n uint32
 	logseq uint64
 	entries map[uint64]logEntry
 	hashValue map[uint64][]byte
@@ -96,6 +97,10 @@ func getNumBytes(i uint64) []byte {
 func New(n, id uint32) MessageLog {
 	appendPRlog := makePRlogAppender(id)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
+	msgLog.msgs = make(map[uint32]([]messages.ReplicaMessage))
+	// for i := 0; i < n; i++ {
+	// }
+	msgLog.n = n
 	msgLog.newAdded = make(map[uint32](chan<-bool))
 	msgLog.logseq = uint64(1)
 	msgLog.hashValue = make(map[uint64][]byte)
@@ -109,40 +114,64 @@ func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uin
 	log.lock.Lock()
 	defer log.lock.Unlock()
 
-	log.msgs = append(log.msgs, msg)
-
-	for key, newAdded := range log.newAdded {
-		if peerID < 100 && key != peerID {
-			// fmt.Printf("--> Filter msg for replica: %d\n", key)
-			select {
-			case newAdded <- false:
-			default:
-			}
-			// continue
-		// } else {
-		// 	fmt.Printf("--> Send msg to replica %d\n", peerID)
-		} else {
+	var idx uint32
+	if peerID > log.n {
+// fmt.Printf("broadcast message %d > %d\n", peerID, log.n)
+		for idx = 0; idx < log.n ; idx++ {
+			log.msgs[idx] = append(log.msgs[idx], msg)
+		}
+		for _, newAdded := range log.newAdded {
 			// fmt.Printf("abc %v\n", newAdded)
 			select {
 			case newAdded <- true:
 			default:
 			}
 		}
+	} else {
+		log.msgs[peerID] = append(log.msgs[peerID], msg)
+		select {
+		case log.newAdded[peerID] <- true:
+		default:
+		}
 	}
+
+	// for key, newAdded := range log.newAdded {
+	// 	if peerID < 100 && key != peerID {
+	// 		// fmt.Printf("--> Filter msg for replica: %d\n", key)
+	// 		select {
+	// 		case newAdded <- false:
+	// 		default:
+	// 		}
+	// 		// continue
+	// 	// } else {
+	// 	// 	fmt.Printf("--> Send msg to replica %d\n", peerID)
+	// 	} else {
+	// 		// fmt.Printf("abc %v\n", newAdded)
+	// 		select {
+	// 		case newAdded <- true:
+	// 		default:
+	// 		}
+	// 	}
+	// }
 }
 
 func (log *messageLog) GetSequence() uint64 {
+	log.lock.Lock()
+	defer log.lock.Unlock()
 	// lock?
 	return log.logseq
 }
 
 func (log *messageLog) GetLatestHash(i uint64) []byte {
-	// lock?
+	log.lock.Lock()
+	defer log.lock.Unlock()
 	// TODO: null check
 	return log.hashValue[log.logseq - i]
 }
 
 func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) {
+	log.lock.Lock()
+	defer log.lock.Unlock()
 	// lock?
 	log.appendPRlog(log, send, replicaID, msg)
 }
@@ -176,6 +205,13 @@ func makePRlogAppender(id uint32) prlogAppender {
 	}
 }
 
+func (log *messageLog) Stream2(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
+	ch := make(chan messages.ReplicaMessage)
+	// go log.supplyMessages2(id, ch, done)
+
+	return ch
+}
+
 func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
 	ch := make(chan messages.ReplicaMessage)
 	go log.supplyMessages(id, ch, done)
@@ -195,8 +231,9 @@ func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessa
 	next := 0
 	for {
 		log.lock.RLock()
-		msgs := log.msgs[next:]
-		next = len(log.msgs)
+// fmt.Printf("NNN log.msgs.len %d, next %d\n", len(log.msgs), next)
+		msgs := log.msgs[id][next:]
+		next = len(log.msgs[id])
 		log.lock.RUnlock()
 
 		for _, msg := range msgs {
@@ -211,7 +248,9 @@ func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessa
 		case b := <-newAdded:
 			// fmt.Printf("newAdded event %v for id:%d\n", b, id)
 			if b != true {
+				// log.lock.RLock()
 				next++
+				// log.lock.RUnlock()
 			}
 		case <-done:
 			return
