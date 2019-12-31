@@ -45,9 +45,10 @@ func (s *replyState) AddReply(reply messages.Reply) error {
 	defer s.Unlock()
 
 	if seq <= s.lastRepliedSeq {
-		return fmt.Errorf("old request ID")
+		return nil
+		// return fmt.Errorf("old request ID %d, %d", seq, s.lastRepliedSeq)
 	}
-
+fmt.Printf("REPLY_SEQ: %d, %d\n", seq, s.lastRepliedSeq)
 	s.reply = reply
 	s.lastRepliedSeq = seq
 
