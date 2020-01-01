@@ -266,7 +266,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				b := make([]byte, 8)
 				binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
 				b = append(b, msgaudit.PrevHash()...)
-				logger.Debugf("-- payload %v, auth %v\n", b, msgaudit.Authenticator())
+				logger.Debugf("-- payload %v, from %d auth %v\n", b, msgaudit.ReplicaID(), msgaudit.Authenticator())
 				if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
 					logger.Errorf("Failed verifying authenticator: %s", err)
 					continue
@@ -592,14 +592,26 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
 			// auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
+			seq := log.GetSequence()
+			lhash := log.GetLatestHash(seq)
 			b := make([]byte, 8)
-			binary.LittleEndian.PutUint64(b, log.GetSequence())
-			b = append(b, log.GetLatestHash(log.GetSequence())...)
+			binary.LittleEndian.PutUint64(b, seq)
+			b = append(b, lhash...)
 			signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
 			if err != nil {
 				panic(err) // Supplied Authenticator must be able to sing
 			}
-			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(log.GetSequence()), log.GetSequence(), signature)
+			fmt.Printf("-- send seq:%d payload %v, auth %v\n", seq, lhash, signature)
+			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, lhash, seq, signature)
+// binary.LittleEndian.PutUint64(b, auditmsg.Sequence())
+// b = append(b, auditmsg.PrevHash()...)
+
+// 			if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, auditmsg.ReplicaID(), b, auditmsg.Authenticator()); err != nil {
+// //			if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, id, b, signature); err != nil {
+// 				fmt.Printf("Failed verifying authenticator: %s\n", err)
+// 			} else {
+// 				fmt.Printf("Passed verification: %s\n", err)
+//			}
 
 			// switch msg.(type) {
 			// case messages.Prepare:

@@ -120,6 +120,7 @@ func (a *PublicAuthenScheme) GenerateAuthenticationTag(m []byte, privKey interfa
 func (a *PublicAuthenScheme) VerifyAuthenticationTag(m []byte, sig []byte, pubKey interface{}) error {
 	md := a.HashScheme.New().Sum(m)
 	if !a.SigCipher.Verify(md, sig, pubKey) {
+		fmt.Printf("md:%v, sig:%v, pubkey:%v\n", md, sig, pubKey)
 		return fmt.Errorf("invalid signature")
 	}
 	return nil
