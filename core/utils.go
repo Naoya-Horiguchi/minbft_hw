@@ -103,8 +103,12 @@ func messageString(msg interface{}) string {
 		return fmt.Sprintf("COMMIT<cv=%d replica=%d prepare=%s>",
 			cv, msg.ReplicaID(), messageString(msg.Prepare()))
 	case messages.AuditMessage:
+		return fmt.Sprintf("AUDIT<cv=%d replica=%d peer=%d seq=%d>",
+			cv, msg.ReplicaID(), msg.PeerID(), msg.Sequence())
 		return fmt.Sprintf("AUDIT<cv=%d replica=%d peer=%d prevhash=%s seq=%d auth=%s>",
 			cv, msg.ReplicaID(), msg.PeerID(), shortString(string(msg.PrevHash()), logMaxStringWidth), msg.Sequence(), shortString(string(msg.Authenticator()), logMaxStringWidth))
+	case messages.Acknowledge:
+		return fmt.Sprintf("ACK<cv=%d replica=%d peer=%d>", cv, msg.ReplicaID(), msg.PeerID())
 	}
 	return "(unknown message)"
 }

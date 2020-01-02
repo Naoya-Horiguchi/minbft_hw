@@ -242,44 +242,65 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			}
 
 			msgStr := messageString(msg)
-			// logger.Debugf("------------- %s", msgStr)
-			// logger.Debugf("Receivaaed %v", msg)
-			// switch msg := msg.(type) {
-			// case messages.AuditMessage:
-			// 	logger.Debugf("AAAAAAAAAAAAAUDT!!!!!!!!!! %v", msg)
-			// case messages.Request:
-			// 	logger.Debugf("AGGGGGGGGGGGGGGG!!!!! %v", msg)
-			// }
-			if msgaudit, ok := msg.(messages.AuditMessage); ok {
-				msgStr = string(msgaudit.ExtractMessage())
-				msg, err = messageImpl.NewFromBinary([]byte(msgStr))
+			switch msg.(type) {
+			case messages.Acknowledge:
+				// logger.Debugf("Ack--")
+				// logger.Debugf("Received Ack from %d, seq:%d\n", msg.ReplicaID(), msg.Sequence());
+				continue
+			case messages.Request:
+			default:
+				switch msg.(type) {
+				case messages.AuditMessage:
+				default:
+					panic("unsupported type of message")
+				}
+				msgaudit, ok := msg.(messages.AuditMessage)
+				if !ok {
+					panic("failed to convert msg to messages.AuditMessage")
+				}
+				// logger.Debugf("Received0 %v", msgStr)
+				msg, err = messageImpl.NewFromBinary(msgaudit.ExtractMessage())
 				if err != nil {
 					logger.Warningf("Failed to unmarshal message: %s", err)
 					continue
 				}
+				msgBytes, err = msg.MarshalBinary()
+
 				msgStr = messageString(msg)
 				logger.Debugf("Received %v", msgStr)
-				log.AppendPRlog(0, msgaudit.ReplicaID(), []byte(msgStr))
+				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
 				// extract replica message from AuditMessage
 
-				// Check signature ...
+ 				// Check signature ...
+				// need to get next hash from msgaudit.PrevHash()
+				x := append(msgaudit.PrevHash(), messagelog.GetNumBytes(msgaudit.Sequence())...)
+				x = append(x, messagelog.GetNumBytes(uint64(1))...)
+				x = append(x, messagelog.GetMsgHash(msgBytes)...)
+				verifyHash := messagelog.GetMsgHash(x)
+
 				b := make([]byte, 8)
 				binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
-				b = append(b, msgaudit.PrevHash()...)
-				logger.Debugf("-- payload %v, from %d auth %v\n", b, msgaudit.ReplicaID(), msgaudit.Authenticator())
+				b = append(b, verifyHash...)
+				// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
 				if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
 					logger.Errorf("Failed verifying authenticator: %s", err)
 					continue
 				}
 
-				// send back ack
-				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
-				logger.Debugf("Send back Acknowledge to %d\n", msgaudit.ReplicaID())
+				// send back ack after save receive event log
+				myseq := log.GetSequence()
+				mylhash := log.GetLatestHash(uint64(1))
+				c := make([]byte, 8)
+				binary.LittleEndian.PutUint64(c, myseq)
+				c = append(c, mylhash...)
+				signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, c)
+				if err != nil {
+					panic(err) // Supplied Authenticator must be able to sing
+				}
+				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), mylhash, myseq, signature)
+				logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msgaudit.ReplicaID(), myseq)
 				// myID, targetID
 				log.Append(ackmsg, id, msgaudit.ReplicaID())
-			} else if msgack, ok := msg.(messages.Acknowledge); ok {
-				logger.Debugf("Received Ack from %d\n", msgack.ReplicaID());
-				continue
 			}
 
 			if replyChan, new, err := handle(msg); err != nil {
@@ -365,8 +386,11 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 		for msg := range log.Stream(peerID, nil) {
 			msgBytes, err := msg.MarshalBinary()
 			switch msg.(type) {
-			case messages.AuditMessage:
-				log.AppendPRlog(1, peerID, msgBytes)
+			// case messages.AuditMessage:
+			case messages.Acknowledge:
+			case messages.ReplicaMessage:
+				auditmsg := log.AppendPRlog(1, peerID, msgBytes)
+				msgBytes, _ = auditmsg.MarshalBinary()
 			}
 			if err != nil {
 				panic(err)
@@ -589,11 +613,17 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 				panic(fmt.Errorf("Failed to consume generated Reply: %s", err))
 			}
 		case messages.ReplicaMessage:
+			log.Append(msg, id, 100)
+			return
+
 			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
 			msgbyte, _ := msg.MarshalBinary()
 			// auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
 			seq := log.GetSequence()
-			lhash := log.GetLatestHash(seq)
+			// lhash := log.GetLatestHash(seq)
+			lhash := log.GetLatestHash(uint64(1))
+			chash := log.GetLatestHash(uint64(0))
+
 			b := make([]byte, 8)
 			binary.LittleEndian.PutUint64(b, seq)
 			b = append(b, lhash...)
@@ -601,17 +631,8 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			if err != nil {
 				panic(err) // Supplied Authenticator must be able to sing
 			}
-			fmt.Printf("-- send seq:%d payload %v, auth %v\n", seq, lhash, signature)
+			fmt.Printf("-- send seq:%d hash1 %v, hash2 %v\n", seq, lhash, chash)
 			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, lhash, seq, signature)
-// binary.LittleEndian.PutUint64(b, auditmsg.Sequence())
-// b = append(b, auditmsg.PrevHash()...)
-
-// 			if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, auditmsg.ReplicaID(), b, auditmsg.Authenticator()); err != nil {
-// //			if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, id, b, signature); err != nil {
-// 				fmt.Printf("Failed verifying authenticator: %s\n", err)
-// 			} else {
-// 				fmt.Printf("Passed verification: %s\n", err)
-//			}
 
 			// switch msg.(type) {
 			// case messages.Prepare:
