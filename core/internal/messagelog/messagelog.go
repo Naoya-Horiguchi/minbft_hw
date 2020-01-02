@@ -46,6 +46,8 @@ import (
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.AuditMessage
+	VerifyAuthenticator(msgaudit messages.AuditMessage) error
+	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 
 	GetSequence() uint64
@@ -82,6 +84,8 @@ type messageLog struct {
 	// 0: trusted, 1:suspected, 2:exposed
 	faultTable map[uint32]uint32
 	// authenticators map[uint64]authenticator
+	auth api.Authenticator
+	msgImpl messages.MessageImpl
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -115,6 +119,8 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 	}
+	msgLog.auth = authenticator
+	msgLog.msgImpl = messageImpl
 	return msgLog
 }
 
@@ -227,6 +233,40 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		// }
 		return auditmsg
 	}
+}
+
+func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
+	// log.lock.Lock()
+	// defer log.lock.Unlock()
+
+	myseq := log.GetSequence()
+	mylhash := log.GetLatestHash(uint64(1))
+	c := make([]byte, 8)
+	binary.LittleEndian.PutUint64(c, myseq)
+	c = append(c, mylhash...)
+	signature, err := log.auth.GenerateMessageAuthenTag(api.ReplicaAuthen, c)
+	if err != nil {
+		panic(err) // Supplied Authenticator must be able to sign
+	}
+	return myseq, mylhash, signature
+}
+
+func (log *messageLog) VerifyAuthenticator(msgaudit messages.AuditMessage) error {
+	// Check signature ...
+	// need to get next hash from msgaudit.PrevHash()
+	x := append(msgaudit.PrevHash(), GetNumBytes(msgaudit.Sequence())...)
+	x = append(x, GetNumBytes(uint64(1))...)
+	x = append(x, GetMsgHash(msgaudit.ExtractMessage())...)
+	verifyHash := GetMsgHash(x)
+
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
+	b = append(b, verifyHash...)
+	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
+	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
+		return fmt.Errorf("Failed verifying authenticator: %s", err)
+	}
+	return nil
 }
 
 func (log *messageLog) Stream2(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {

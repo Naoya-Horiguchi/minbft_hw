@@ -269,34 +269,15 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				msgStr = messageString(msg)
 				logger.Debugf("Received %v", msgStr)
 				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
-				// extract replica message from AuditMessage
 
- 				// Check signature ...
-				// need to get next hash from msgaudit.PrevHash()
-				x := append(msgaudit.PrevHash(), messagelog.GetNumBytes(msgaudit.Sequence())...)
-				x = append(x, messagelog.GetNumBytes(uint64(1))...)
-				x = append(x, messagelog.GetMsgHash(msgBytes)...)
-				verifyHash := messagelog.GetMsgHash(x)
-
-				b := make([]byte, 8)
-				binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
-				b = append(b, verifyHash...)
-				// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
-				if err = authenticator.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
+				if log.VerifyAuthenticator(msgaudit) != nil {
 					logger.Errorf("Failed verifying authenticator: %s", err)
 					continue
 				}
 
-				// send back ack after save receive event log
-				myseq := log.GetSequence()
-				mylhash := log.GetLatestHash(uint64(1))
-				c := make([]byte, 8)
-				binary.LittleEndian.PutUint64(c, myseq)
-				c = append(c, mylhash...)
-				signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, c)
-				if err != nil {
-					panic(err) // Supplied Authenticator must be able to sing
-				}
+				// TODO: save authenticator
+
+				myseq, mylhash, signature := log.GenerateAuthenticator()
 				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), mylhash, myseq, signature)
 				logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msgaudit.ReplicaID(), myseq)
 				// myID, targetID
