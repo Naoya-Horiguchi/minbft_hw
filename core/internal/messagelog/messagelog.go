@@ -88,6 +88,7 @@ type messageLog struct {
 	authenticators map[uint32]map[uint64][]byte
 	auth api.Authenticator
 	msgImpl messages.MessageImpl
+	witnesses map[uint32]([]uint32)
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -116,10 +117,14 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.entries = make(map[uint64]logEntry)
 	msgLog.faultTable = make(map[uint32]uint32)
 	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
+	msgLog.witnesses = make(map[uint32]([]uint32))
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 		msgLog.authenticators[i] = make(map[uint64][]byte)
+		// TODO: control witness number from parameter.
+		msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1)%n)
 	}
+	fmt.Printf("%v\n", msgLog.witnesses)
 	msgLog.auth = authenticator
 	msgLog.msgImpl = messageImpl
 	return msgLog

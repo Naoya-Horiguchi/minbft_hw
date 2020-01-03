@@ -278,7 +278,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					continue
 				}
 			case messages.Request:
-				log.DumpAuthenticators()
+				// log.DumpAuthenticators()
 			}
 
 			if replyChan, new, err := handle(msg); err != nil {
