@@ -253,6 +253,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				msgStr2 := messageString(msg)
 				logger.Debugf("Received %s, %s", msgStr, msgStr2)
 				// TODO: implement store peerrevew logic
+				// TODO: Timeout
 				// TODO: save authenticator
 				switch msg3 := msg2.(type) {
 				case messages.AuditMessage:
@@ -262,6 +263,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					}
 					log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
 					myseq, mylhash, signature := log.GenerateAuthenticator()
+					log.SaveAuthenticator(msg3.ReplicaID(), myseq-1, signature)
 					mylhash = log.GetLatestHash(uint64(2))
 					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
 					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
@@ -272,7 +274,11 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 						logger.Errorf("Failed verifying authenticator: %s", err)
 						continue
 					}
+					log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
+					continue
 				}
+			case messages.Request:
+				log.DumpAuthenticators()
 			}
 
 			if replyChan, new, err := handle(msg); err != nil {

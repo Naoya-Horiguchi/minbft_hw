@@ -45,10 +45,12 @@ import (
 // passed if there's no need to close the returned channel.
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
+	SaveAuthenticator(id uint32, seq uint64, auth []byte)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.PeerReviewMessage
 	VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
+	DumpAuthenticators()
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -83,7 +85,7 @@ type messageLog struct {
 	hashValue map[uint64][]byte
 	// 0: trusted, 1:suspected, 2:exposed
 	faultTable map[uint32]uint32
-	// authenticators map[uint64]authenticator
+	authenticators map[uint32]map[uint64][]byte
 	auth api.Authenticator
 	msgImpl messages.MessageImpl
 }
@@ -106,18 +108,17 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	appendPRlog := makePRlogAppender(id, authenticator, messageImpl)
 	msgLog := &messageLog{appendPRlog: appendPRlog}
 	msgLog.msgs = make(map[uint32]([]messages.ReplicaMessage))
-	// for i := 0; i < n; i++ {
-	// }
 	msgLog.n = n
 	msgLog.newAdded = make(map[uint32](chan<-bool))
 	msgLog.logseq = uint64(1)
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = GetMsgHash([]byte("seed"))
-	// fmt.Printf("<<<%x>>>\n", msgLog.hashValue[0])
 	msgLog.entries = make(map[uint64]logEntry)
 	msgLog.faultTable = make(map[uint32]uint32)
+	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
+		msgLog.authenticators[i] = make(map[uint64][]byte)
 	}
 	msgLog.auth = authenticator
 	msgLog.msgImpl = messageImpl
@@ -163,16 +164,21 @@ func (log *messageLog) GetLatestHash(i uint64) []byte {
 	return log.hashValue[log.logseq - i]
 }
 
+
+func (log *messageLog) SaveAuthenticator(id uint32, seq uint64, auth []byte) {
+	log.authenticators[id][seq] = auth
+}
+
 func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
 	log.lock.Lock()
 	defer log.lock.Unlock()
-	// lock?
+
 	return log.appendPRlog(log, send, replicaID, msg)
 }
 
 func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl messages.MessageImpl) prlogAppender {
 	return func (log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
-		// lock?
+		var auditmsg messages.PeerReviewMessage
 
 		if replicaID == id {
 			return nil
@@ -185,17 +191,19 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		x = append(x, GetMsgHash(msg)...)
 		newHash := GetMsgHash(x)
 
-		b := make([]byte, 8)
-		binary.LittleEndian.PutUint64(b, log.logseq)
-		b = append(b, newHash...)
-		signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
-		if err != nil {
-			fmt.Printf("failed to generate signature %s\n", err)
-			panic(err) // Supplied Authenticator must be able to sing
+		if send == 1 {
+			b := make([]byte, 8)
+			binary.LittleEndian.PutUint64(b, log.logseq)
+			b = append(b, newHash...)
+			signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
+			if err != nil {
+				fmt.Printf("failed to generate signature %s\n", err)
+				panic(err) // Supplied Authenticator must be able to sing
+			}
+			// do this only when send == 1
+			auditmsg = messageImpl.NewAudit(id, replicaID, msg, latestHash, log.logseq, signature)
+			log.SaveAuthenticator(id, log.logseq, signature)
 		}
-		// do this only when send == 1
-		auditmsg := messageImpl.NewAudit(id, replicaID, msg, latestHash, log.logseq, signature)
-
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		entry := &logEntry{
 			msgType: send,
@@ -205,12 +213,6 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		log.entries[log.logseq] = *entry
 		log.hashValue[log.logseq] = newHash
 		log.logseq++
-		// for k, v := range log.entries {
-		// 	fmt.Printf("??? log[%d] is %x\n", k, v)
-		// }
-		// for k, v := range log.hashValue {
-		// 	fmt.Printf("??? hash[%d] is %x\n", k, v)
-		// }
 		return auditmsg
 	}
 }
@@ -261,6 +263,14 @@ func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.R
 	go log.supplyMessages(id, ch, done)
 
 	return ch
+}
+
+func (log *messageLog) DumpAuthenticators() {
+	for i := uint32(0); i < log.n; i++ {
+		for k, v := range log.authenticators[i] {
+			fmt.Printf("id:%d, seq:%d auth:%v\n", i, k, v[0:20])
+		}
+	}
 }
 
 func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessage, done <-chan struct{}) {
