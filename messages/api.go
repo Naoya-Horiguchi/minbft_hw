@@ -27,7 +27,7 @@ type MessageImpl interface {
 	NewCommit(replicaID uint32, prepare Prepare) Commit
 	NewReply(replicaID, clientID uint32, sequence uint64, result []byte) Reply
 	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
-	NewAcknowledge(replicaID, peerID uint32, prevhash []byte, seq uint64, auth []byte) Acknowledge
+	NewAcknowledge(replicaID, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte) Acknowledge
 }
 
 type Message interface {
@@ -119,4 +119,5 @@ type Acknowledge interface {
 	PrevHash() []byte
 	Sequence() uint64
 	Authenticator() []byte
+	ExtractMessage() []byte
 }

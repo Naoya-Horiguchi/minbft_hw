@@ -130,13 +130,12 @@ func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uin
 
 	var idx uint32
 	if peerID > log.n {
-// fmt.Printf("broadcast message %d > %d\n", peerID, log.n)
 		for idx = 0; idx < log.n ; idx++ {
 			log.msgs[idx] = append(log.msgs[idx], msg)
 		}
 		for _, newAdded := range log.newAdded {
-			// fmt.Printf("abc %v\n", newAdded)
 			select {
+			// TODO: no need to send boolean
 			case newAdded <- true:
 			default:
 			}
@@ -148,25 +147,6 @@ func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uin
 		default:
 		}
 	}
-
-	// for key, newAdded := range log.newAdded {
-	// 	if peerID < 100 && key != peerID {
-	// 		// fmt.Printf("--> Filter msg for replica: %d\n", key)
-	// 		select {
-	// 		case newAdded <- false:
-	// 		default:
-	// 		}
-	// 		// continue
-	// 	// } else {
-	// 	// 	fmt.Printf("--> Send msg to replica %d\n", peerID)
-	// 	} else {
-	// 		// fmt.Printf("abc %v\n", newAdded)
-	// 		select {
-	// 		case newAdded <- true:
-	// 		default:
-	// 		}
-	// 	}
-	// }
 }
 
 func (log *messageLog) GetSequence() uint64 {
@@ -269,6 +249,24 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.AuditMessage) error
 	return nil
 }
 
+func (log *messageLog) VerifyAcknowledge(msgack messages.Acknowledge) error {
+	// Check signature ...
+	// need to get next hash from msgaudit.PrevHash()
+	x := append(msgack.PrevHash(), GetNumBytes(msgack.Sequence())...)
+	x = append(x, GetNumBytes(uint64(1))...)
+	x = append(x, GetMsgHash(msgack.ExtractMessage())...)
+	verifyHash := GetMsgHash(x)
+
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, msgack.Sequence())
+	b = append(b, verifyHash...)
+	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
+	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, msgack.ReplicaID(), b, msgack.Authenticator()); err != nil {
+		return fmt.Errorf("Failed verifying authenticator: %s", err)
+	}
+	return nil
+}
+
 func (log *messageLog) Stream2(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
 	ch := make(chan messages.ReplicaMessage)
 	// go log.supplyMessages2(id, ch, done)
@@ -295,7 +293,6 @@ func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessa
 	next := 0
 	for {
 		log.lock.RLock()
-// fmt.Printf("NNN log.msgs.len %d, next %d\n", len(log.msgs), next)
 		msgs := log.msgs[id][next:]
 		next = len(log.msgs[id])
 		log.lock.RUnlock()

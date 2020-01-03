@@ -110,6 +110,7 @@ message Acknowledge {
         bytes prevhash = 3;
         uint64 sequence = 4;
         bytes authenticator = 5;
+        bytes msg = 6;
     }
     M msg = 1;
 }

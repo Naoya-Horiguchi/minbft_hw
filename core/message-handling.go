@@ -244,8 +244,23 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			msgStr := messageString(msg)
 			switch msg.(type) {
 			case messages.Acknowledge:
-				// logger.Debugf("Ack--")
-				// logger.Debugf("Received Ack from %d, seq:%d\n", msg.ReplicaID(), msg.Sequence());
+				msgack, ok := msg.(messages.Acknowledge)
+				if !ok {
+					panic("failed to convert msg to messages.Acknowledge")
+				}
+				msg, err = messageImpl.NewFromBinary(msgack.ExtractMessage())
+				if err != nil {
+					logger.Warningf("Failed to unmarshal message: %s", err)
+					continue
+				}
+				msgBytes, err = msg.MarshalBinary()
+				msgStr = messageString(msg)
+				logger.Debugf("Received %v", msgStr)
+				if log.VerifyAuthenticator(msgack) != nil {
+					logger.Errorf("Failed verifying authenticator: %s", err)
+					continue
+				}
+				// TODO: implement store peerrevew logic
 				continue
 			case messages.Request:
 			default:
@@ -265,20 +280,20 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					continue
 				}
 				msgBytes, err = msg.MarshalBinary()
+				// error check
 
 				msgStr = messageString(msg)
 				logger.Debugf("Received %v", msgStr)
-				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
-
 				if log.VerifyAuthenticator(msgaudit) != nil {
 					logger.Errorf("Failed verifying authenticator: %s", err)
 					continue
 				}
+				log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
 
 				// TODO: save authenticator
 
 				myseq, mylhash, signature := log.GenerateAuthenticator()
-				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), mylhash, myseq, signature)
+				ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), mylhash, myseq, signature, msgBytes)
 				logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msgaudit.ReplicaID(), myseq)
 				// myID, targetID
 				log.Append(ackmsg, id, msgaudit.ReplicaID())
