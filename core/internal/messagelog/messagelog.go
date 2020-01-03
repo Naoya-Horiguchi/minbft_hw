@@ -45,8 +45,8 @@ import (
 // passed if there's no need to close the returned channel.
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
-	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.AuditMessage
-	VerifyAuthenticator(msgaudit messages.AuditMessage) error
+	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.PeerReviewMessage
+	VerifyAuthenticator(msgaudit messages.PeerReviewMessage) error
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 
@@ -64,7 +64,7 @@ type authenticator struct {
 	stub int
 }
 
-type prlogAppender func(log *messageLog, send int, replicaID uint32, msg []byte) messages.AuditMessage
+type prlogAppender func(log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage
 
 type messageLog struct {
 	lock sync.RWMutex
@@ -163,7 +163,7 @@ func (log *messageLog) GetLatestHash(i uint64) []byte {
 	return log.hashValue[log.logseq - i]
 }
 
-func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messages.AuditMessage {
+func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
 	log.lock.Lock()
 	defer log.lock.Unlock()
 	// lock?
@@ -171,7 +171,7 @@ func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messa
 }
 
 func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl messages.MessageImpl) prlogAppender {
-	return func (log *messageLog, send int, replicaID uint32, msg []byte) messages.AuditMessage {
+	return func (log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
 		// lock?
 
 		if replicaID == id {
@@ -231,7 +231,7 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 	return myseq, mylhash, signature
 }
 
-func (log *messageLog) VerifyAuthenticator(msgaudit messages.AuditMessage) error {
+func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage) error {
 	// Check signature ...
 	// need to get next hash from msgaudit.PrevHash()
 	x := append(msgaudit.PrevHash(), GetNumBytes(msgaudit.Sequence())...)
@@ -244,24 +244,6 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.AuditMessage) error
 	b = append(b, verifyHash...)
 	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
 	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
-		return fmt.Errorf("Failed verifying authenticator: %s", err)
-	}
-	return nil
-}
-
-func (log *messageLog) VerifyAcknowledge(msgack messages.Acknowledge) error {
-	// Check signature ...
-	// need to get next hash from msgaudit.PrevHash()
-	x := append(msgack.PrevHash(), GetNumBytes(msgack.Sequence())...)
-	x = append(x, GetNumBytes(uint64(1))...)
-	x = append(x, GetMsgHash(msgack.ExtractMessage())...)
-	verifyHash := GetMsgHash(x)
-
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, msgack.Sequence())
-	b = append(b, verifyHash...)
-	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
-	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, msgack.ReplicaID(), b, msgack.Authenticator()); err != nil {
 		return fmt.Errorf("Failed verifying authenticator: %s", err)
 	}
 	return nil

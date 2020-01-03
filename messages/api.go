@@ -102,9 +102,10 @@ type Reply interface {
 	ImplementsReply()
 }
 
-type AuditMessage interface {
+type PeerReviewMessage interface {
+	// Message
+	// ReplicaID() uint32
 	ReplicaMessage
-	ImplementsAuditMessage()
 	ExtractMessage() []byte
 	PeerID() uint32
 	PrevHash() []byte
@@ -112,12 +113,12 @@ type AuditMessage interface {
 	Authenticator() []byte
 }
 
+type AuditMessage interface {
+	PeerReviewMessage
+	ImplementsAuditMessage()
+}
+
 type Acknowledge interface {
-	ReplicaMessage
+	PeerReviewMessage
 	ImplementsAcknowledge()
-	PeerID() uint32
-	PrevHash() []byte
-	Sequence() uint64
-	Authenticator() []byte
-	ExtractMessage() []byte
 }
