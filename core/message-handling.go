@@ -250,59 +250,29 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					continue
 				}
 				msgBytes, err = msg.MarshalBinary()
-				msgStr = messageString(msg)
-				logger.Debugf("Received %v", msgStr)
-				if log.VerifyAuthenticator(msg2) != nil {
-					logger.Errorf("Failed verifying authenticator: %s", err)
-					continue
-				}
+				msgStr2 := messageString(msg)
+				logger.Debugf("Received %s, %s", msgStr, msgStr2)
 				// TODO: implement store peerrevew logic
 				// TODO: save authenticator
 				switch msg3 := msg2.(type) {
 				case messages.AuditMessage:
+					if log.VerifyAuthenticator(msg2, 1) != nil {
+						logger.Errorf("Failed verifying authenticator: %s", err)
+						continue
+					}
 					log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
-
 					myseq, mylhash, signature := log.GenerateAuthenticator()
+					mylhash = log.GetLatestHash(uint64(2))
 					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
-					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq)
+					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
 					// myID, targetID
 					log.Append(ackmsg, id, msg3.ReplicaID())
+				case messages.Acknowledge:
+					if log.VerifyAuthenticator(msg2, 0) != nil {
+						logger.Errorf("Failed verifying authenticator: %s", err)
+						continue
+					}
 				}
-			case messages.Request:
-			// default:
-			// 	switch msg.(type) {
-			// 	case messages.AuditMessage:
-			// 	default:
-			// 		panic("unsupported type of message")
-			// 	}
-			// 	msgaudit, ok := msg.(messages.AuditMessage)
-			// 	if !ok {
-			// 		panic("failed to convert msg to messages.AuditMessage")
-			// 	}
-			// 	// logger.Debugf("Received0 %v", msgStr)
-			// 	msg, err = messageImpl.NewFromBinary(msgaudit.ExtractMessage())
-			// 	if err != nil {
-			// 		logger.Warningf("Failed to unmarshal message: %s", err)
-			// 		continue
-			// 	}
-			// 	msgBytes, err = msg.MarshalBinary()
-			// 	// error check
-
-			// 	msgStr = messageString(msg)
-			// 	logger.Debugf("Received %v", msgStr)
-			// 	if log.VerifyAuthenticator(msgaudit) != nil {
-			// 		logger.Errorf("Failed verifying authenticator: %s", err)
-			// 		continue
-			// 	}
-			// 	log.AppendPRlog(0, msgaudit.ReplicaID(), msgBytes)
-
-			// 	// TODO: save authenticator
-
-			// 	myseq, mylhash, signature := log.GenerateAuthenticator()
-			// 	ackmsg := messageImpl.NewAcknowledge(id, msgaudit.ReplicaID(), mylhash, myseq, signature, msgBytes)
-			// 	logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msgaudit.ReplicaID(), myseq)
-			// 	// myID, targetID
-			// 	log.Append(ackmsg, id, msgaudit.ReplicaID())
 			}
 
 			if replyChan, new, err := handle(msg); err != nil {

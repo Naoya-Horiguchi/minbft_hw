@@ -46,7 +46,7 @@ import (
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.PeerReviewMessage
-	VerifyAuthenticator(msgaudit messages.PeerReviewMessage) error
+	VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 
@@ -231,11 +231,11 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 	return myseq, mylhash, signature
 }
 
-func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage) error {
+func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error {
 	// Check signature ...
 	// need to get next hash from msgaudit.PrevHash()
 	x := append(msgaudit.PrevHash(), GetNumBytes(msgaudit.Sequence())...)
-	x = append(x, GetNumBytes(uint64(1))...)
+	x = append(x, GetNumBytes(uint64(send))...)
 	x = append(x, GetMsgHash(msgaudit.ExtractMessage())...)
 	verifyHash := GetMsgHash(x)
 
