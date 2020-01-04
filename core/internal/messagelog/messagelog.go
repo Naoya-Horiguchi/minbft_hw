@@ -19,6 +19,7 @@
 package messagelog
 
 import (
+	"time"
 	"sync"
 
 	"fmt"
@@ -89,6 +90,7 @@ type messageLog struct {
 	auth api.Authenticator
 	msgImpl messages.MessageImpl
 	witnesses map[uint32]([]uint32)
+	ackTimers map[uint32]map[uint64]*time.Timer
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -118,11 +120,13 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.faultTable = make(map[uint32]uint32)
 	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
 	msgLog.witnesses = make(map[uint32]([]uint32))
+	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 		msgLog.authenticators[i] = make(map[uint64][]byte)
 		// TODO: control witness number from parameter.
 		msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1)%n)
+		msgLog.ackTimers[i] = make(map[uint64]*time.Timer)
 	}
 	fmt.Printf("%v\n", msgLog.witnesses)
 	msgLog.auth = authenticator
@@ -205,9 +209,10 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 				fmt.Printf("failed to generate signature %s\n", err)
 				panic(err) // Supplied Authenticator must be able to sing
 			}
-			// do this only when send == 1
 			auditmsg = messageImpl.NewAudit(id, replicaID, msg, latestHash, log.logseq, signature)
 			log.SaveAuthenticator(id, log.logseq, signature)
+			// Set timer which expires if no ack receives
+			log.startAckTimer(replicaID, log.logseq)
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		entry := &logEntry{
@@ -239,28 +244,27 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 }
 
 func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error {
-	// Check signature ...
+	rid := msgaudit.ReplicaID()
+	seq := msgaudit.Sequence()
 	// need to get next hash from msgaudit.PrevHash()
-	x := append(msgaudit.PrevHash(), GetNumBytes(msgaudit.Sequence())...)
+	x := append(msgaudit.PrevHash(), GetNumBytes(seq)...)
 	x = append(x, GetNumBytes(uint64(send))...)
 	x = append(x, GetMsgHash(msgaudit.ExtractMessage())...)
 	verifyHash := GetMsgHash(x)
 
 	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, msgaudit.Sequence())
+	binary.LittleEndian.PutUint64(b, seq)
 	b = append(b, verifyHash...)
-	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", msgaudit.ReplicaID(), msgaudit.PrevHash(), verifyHash)
-	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, msgaudit.ReplicaID(), b, msgaudit.Authenticator()); err != nil {
-		return fmt.Errorf("Failed verifying authenticator: %s", err)
+	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", rid, msgaudit.PrevHash(), verifyHash)
+	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, rid, b, msgaudit.Authenticator()); err != nil {
+		return fmt.Errorf("Failed verifying authenticator: C %s", err)
+	}
+	log.stopAckTimer(rid, seq)
+	if log.faultTable[rid] == 1 {
+		fmt.Printf("Received Ack message from 'suspended' replica %d, so set its status as 'trusted'.\n", rid)
+		log.faultTable[rid] = 0
 	}
 	return nil
-}
-
-func (log *messageLog) Stream2(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
-	ch := make(chan messages.ReplicaMessage)
-	// go log.supplyMessages2(id, ch, done)
-
-	return ch
 }
 
 func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage {
@@ -275,6 +279,24 @@ func (log *messageLog) DumpAuthenticators() {
 		for k, v := range log.authenticators[i] {
 			fmt.Printf("id:%d, seq:%d auth:%v\n", i, k, v[0:20])
 		}
+	}
+}
+
+func (log *messageLog) startAckTimer(id uint32, seq uint64) {
+	timeout := time.Duration(100)*time.Millisecond
+	if seq == uint64(8) {
+		timeout = time.Duration(1)*time.Nanosecond
+	}
+	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
+		// TODO: send challenge to witness replicas
+		fmt.Printf("AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
+		log.faultTable[id] = 1
+	})
+}
+
+func (log *messageLog) stopAckTimer(id uint32, seq uint64) {
+	if log.ackTimers[id][seq] != nil {
+		log.ackTimers[id][seq].Stop()
 	}
 }
 

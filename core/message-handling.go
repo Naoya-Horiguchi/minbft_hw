@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger-labs/minbft/core/internal/peerstate"
 	"github.com/hyperledger-labs/minbft/core/internal/requestlist"
 	"github.com/hyperledger-labs/minbft/core/internal/viewstate"
+	// "github.com/hyperledger-labs/minbft/core/internal/timer"
 	"github.com/hyperledger-labs/minbft/messages"
 	// "github.com/hyperledger-labs/minbft/messages/protobuf"
 )
@@ -258,7 +259,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				switch msg3 := msg2.(type) {
 				case messages.AuditMessage:
 					if log.VerifyAuthenticator(msg2, 1) != nil {
-						logger.Errorf("Failed verifying authenticator: %s", err)
+						logger.Errorf("Failed verifying authenticator: A %s", err)
 						continue
 					}
 					log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
@@ -271,7 +272,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
-						logger.Errorf("Failed verifying authenticator: %s", err)
+						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}
 					log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
