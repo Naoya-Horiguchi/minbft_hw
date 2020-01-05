@@ -91,6 +91,7 @@ type messageLog struct {
 	msgImpl messages.MessageImpl
 	witnesses map[uint32]([]uint32)
 	ackTimers map[uint32]map[uint64]*time.Timer
+	auditTimers map[uint32]*time.Timer
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -121,6 +122,7 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
 	msgLog.witnesses = make(map[uint32]([]uint32))
 	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
+	msgLog.auditTimers = make(map[uint32]*time.Timer)
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 		msgLog.authenticators[i] = make(map[uint64][]byte)

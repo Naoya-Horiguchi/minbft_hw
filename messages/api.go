@@ -113,7 +113,7 @@ type PeerReviewMessage interface {
 	Authenticator() []byte
 }
 
-type AuditMessage interface {
+type PRWrapMessage interface {
 	PeerReviewMessage
 	ImplementsAuditMessage()
 }
@@ -121,4 +121,9 @@ type AuditMessage interface {
 type Acknowledge interface {
 	PeerReviewMessage
 	ImplementsAcknowledge()
+}
+
+type AuditMessage interface {
+	PeerReviewMessage
+	ImplementsAuditMessage()
 }

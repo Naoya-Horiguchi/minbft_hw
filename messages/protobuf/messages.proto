@@ -91,7 +91,7 @@ message Commit {
     bytes replica_ui = 2;       // UI_j: replica UI
 }
 
-message Audit {
+message PRWrappedMessage {
     message M {
         uint32 replica_id = 1;   // s_i: replica id
         uint32 peer_id = 2;      // s_j: primary id
@@ -111,6 +111,18 @@ message Acknowledge {
         uint64 sequence = 4;
         bytes authenticator = 5;
         bytes msg = 6;
+    }
+    M msg = 1;
+}
+
+message Audit {
+    message M {
+        uint32 replica_id = 1;   // s_i: replica id
+        uint32 peer_id = 2;      // s_j: primary id
+        bytes msg = 3;
+        bytes prevhash = 4;
+        uint64 sequence = 5;
+        bytes authenticator = 6;
     }
     M msg = 1;
 }
