@@ -133,7 +133,36 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	fmt.Printf("%v\n", msgLog.witnesses)
 	msgLog.auth = authenticator
 	msgLog.msgImpl = messageImpl
+	// Initialize timer for each witness replicas
+	for _, v := range msgLog.witnesses[id] {
+		fmt.Printf("my witness replica: %d\n", v)
+		go func() {
+			i := uint32(0)
+			quit := make(chan struct{})
+			ticker := time.NewTicker(250 * time.Millisecond)
+			for {
+				select {
+				case <- ticker.C:
+					i++
+	        		periodicFunction(msgLog, id, v, messageImpl)
+				case <- quit:
+					ticker.Stop()
+					return
+				}
+				// TODO: better final condition
+				if i == uint32(50000) {
+					close(quit)
+				}
+			}
+		}()
+	}
 	return msgLog
+}
+
+func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.MessageImpl) {
+	fmt.Print("tick\n")
+	auditmsg := messageImpl.NewAudit(id, 0, []byte{}, []byte{}, 0, []byte{})
+	log.Append(auditmsg, id, replica)
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uint32) {
@@ -189,7 +218,7 @@ func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messa
 
 func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl messages.MessageImpl) prlogAppender {
 	return func (log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
-		var auditmsg messages.PeerReviewMessage
+		var prwmsg messages.PeerReviewMessage
 
 		if replicaID == id {
 			return nil
@@ -211,10 +240,12 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 				fmt.Printf("failed to generate signature %s\n", err)
 				panic(err) // Supplied Authenticator must be able to sing
 			}
-			auditmsg = messageImpl.NewAudit(id, replicaID, msg, latestHash, log.logseq, signature)
+			// prwmsg = messageImpl.NewPRWrapped(id, replicaID, msg, latestHash, log.logseq, signature)
+			prwmsg = messageImpl.NewPRWrapped(id, uint32(log.logseq), msg, latestHash, log.logseq, signature)
 			log.SaveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
 			log.startAckTimer(replicaID, log.logseq)
+			// log.startAckTimer(uint32(0), log.logseq)
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		entry := &logEntry{
@@ -225,7 +256,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		log.entries[log.logseq] = *entry
 		log.hashValue[log.logseq] = newHash
 		log.logseq++
-		return auditmsg
+		return prwmsg
 	}
 }
 
@@ -261,7 +292,8 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, 
 	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, rid, b, msgaudit.Authenticator()); err != nil {
 		return fmt.Errorf("Failed verifying authenticator: C %s", err)
 	}
-	log.stopAckTimer(rid, seq)
+	log.stopAckTimer(rid, uint64(msgaudit.PeerID()))
+	// log.stopAckTimer(uint32(0), seq)
 	if log.faultTable[rid] == 1 {
 		fmt.Printf("Received Ack message from 'suspended' replica %d, so set its status as 'trusted'.\n", rid)
 		log.faultTable[rid] = 0
@@ -289,6 +321,7 @@ func (log *messageLog) startAckTimer(id uint32, seq uint64) {
 	if seq == uint64(8) {
 		timeout = time.Duration(1)*time.Nanosecond
 	}
+	fmt.Printf("start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
 		fmt.Printf("AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
@@ -297,7 +330,9 @@ func (log *messageLog) startAckTimer(id uint32, seq uint64) {
 }
 
 func (log *messageLog) stopAckTimer(id uint32, seq uint64) {
+	fmt.Printf("stop acktimer [%d][%d]\n", id, seq)
 	if log.ackTimers[id][seq] != nil {
+		fmt.Printf("Stop timer for replica:%d, seq:%d\n", id, seq)
 		log.ackTimers[id][seq].Stop()
 	}
 }

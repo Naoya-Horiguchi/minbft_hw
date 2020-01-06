@@ -19,7 +19,6 @@ package minbft
 import (
 	"fmt"
 	"sync"
-	"encoding/binary"
 
 	logging "github.com/op/go-logging"
 
@@ -244,6 +243,8 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
+			case messages.AuditMessage:
+				continue
 			case messages.PeerReviewMessage:
 				msg, err = messageImpl.NewFromBinary(msg2.ExtractMessage())
 				if err != nil {
@@ -257,7 +258,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				// TODO: Timeout
 				// TODO: save authenticator
 				switch msg3 := msg2.(type) {
-				case messages.AuditMessage:
+				case messages.PRWrapped:
 					if log.VerifyAuthenticator(msg2, 1) != nil {
 						logger.Errorf("Failed verifying authenticator: A %s", err)
 						continue
@@ -266,9 +267,9 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					myseq, mylhash, signature := log.GenerateAuthenticator()
 					log.SaveAuthenticator(msg3.ReplicaID(), myseq-1, signature)
 					mylhash = log.GetLatestHash(uint64(2))
-					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
+					// ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
+					ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
 					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
-					// myID, targetID
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
@@ -311,10 +312,9 @@ func startPeerConnections(replicaID, n uint32, connector api.ReplicaConnector, l
 			continue
 		}
 
-		sender := makePeerMessageSender(log, peerID)
 		supply := makePeerMessageSupplier(log, peerID)
 		connect := makePeerConnector(peerID, connector)
-		if err := startPeerConnection(connect, sender, supply); err != nil {
+		if err := startPeerConnection(connect, supply); err != nil {
 			return fmt.Errorf("Cannot connect to replica %d: %s", peerID, err)
 		}
 	}
@@ -324,7 +324,7 @@ func startPeerConnections(replicaID, n uint32, connector api.ReplicaConnector, l
 
 // startPeerConnection initiates asynchronous message exchange with a
 // peer replica.
-func startPeerConnection(connect peerConnector, sender peerMessageSender, supply peerMessageSupplier) error {
+func startPeerConnection(connect peerConnector, supply peerMessageSupplier) error {
 	out := make(chan []byte)
 
 	// So far, reply stream is not used for replica-to-replica
@@ -341,23 +341,6 @@ func startPeerConnection(connect peerConnector, sender peerMessageSender, supply
 	return nil
 }
 
-// makePeerMessageSender ...
-func makePeerMessageSender(log messagelog.MessageLog, peerID uint32) peerMessageSender {
-	return func(out chan<- []byte) {
-		for msg := range log.Stream(peerID, nil) {
-			msgBytes, err := msg.MarshalBinary()
-			switch msg.(type) {
-			case messages.AuditMessage:
-				log.AppendPRlog(1, peerID, msgBytes)
-			}
-			if err != nil {
-				panic(err)
-			}
-			out <- msgBytes
-		}
-	}
-}
-
 // makePeerMessageSupplier construct a peerMessageSupplier using the
 // supplied message log.
 func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessageSupplier {
@@ -367,9 +350,10 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 			switch msg.(type) {
 			// case messages.AuditMessage:
 			case messages.Acknowledge:
+			case messages.AuditMessage:
 			case messages.ReplicaMessage:
-				auditmsg := log.AppendPRlog(1, peerID, msgBytes)
-				msgBytes, _ = auditmsg.MarshalBinary()
+				prwmsg := log.AppendPRlog(1, peerID, msgBytes)
+				msgBytes, _ = prwmsg.MarshalBinary()
 			}
 			if err != nil {
 				panic(err)
@@ -593,60 +577,6 @@ func makeGeneratedMessageConsumer(id uint32, log messagelog.MessageLog, provider
 			}
 		case messages.ReplicaMessage:
 			log.Append(msg, id, 100)
-			return
-
-			// auditmsg := protobuf.NewAuditMessage(msg, []byte("abc"), uint64(177), []byte("authentic"))
-			msgbyte, _ := msg.MarshalBinary()
-			// auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, log.GetLatestHash(uint64(1)), log.GetSequence(), []byte("authentic"))
-			seq := log.GetSequence()
-			// lhash := log.GetLatestHash(seq)
-			lhash := log.GetLatestHash(uint64(1))
-			chash := log.GetLatestHash(uint64(0))
-
-			b := make([]byte, 8)
-			binary.LittleEndian.PutUint64(b, seq)
-			b = append(b, lhash...)
-			signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
-			if err != nil {
-				panic(err) // Supplied Authenticator must be able to sing
-			}
-			fmt.Printf("-- send seq:%d hash1 %v, hash2 %v\n", seq, lhash, chash)
-			auditmsg := messageImpl.NewAudit(id, msg.ReplicaID(), msgbyte, lhash, seq, signature)
-
-			// switch msg.(type) {
-			// case messages.Prepare:
-			// 	fmt.Printf("broadcast Prepare message\n")
-			// case messages.Commit:
-			// 	fmt.Printf("broadcast Commit message\n")
-			// }
-			// switch auditmsg.(type) {
-			// case messages.AuditMessage:
-			// 	fmt.Printf("broadcast Audit message\n")
-			// }
-			// fmt.Printf("DEBBBUGG! id%d\n", id)
-			log.Append(auditmsg, id, 100)
-
-			// fmt.Printf("==> append to log aaa a %v\n", auditmsg)
-			// log.AppendPRlog(1, msg.ReplicaID(), msgbyte) // need this
-			// switch adf := auditmsg.(type) {
-			// case messages.Request:
-			// 	fmt.Printf("dddddddddd1111111 %v\n", adf)
-			// case messages.AuditMessage:
-			// 	fmt.Printf("ddddddddddssssss2222222222 %v\n", adf)
-			// 	msgbyte, _ = auditmsg.MarshalBinary()
-
-			// 	msg2, _ := messageImpl.NewFromBinary(msgbyte)
-			// 	fmt.Printf("----------ddd--- %v\n", msg2)
-			// 	switch msg2 := msg2.(type) {
-			// 	case messages.AuditMessage:
-			// 		fmt.Printf("AADDDDDDDDDDDDDDDDD!!!!! %v", msg2)
-			// 	case messages.Request:
-			// 		fmt.Printf("AGGGmmmmmmmmmmmmmm!!!!! %v", msg2)
-			// 	}
-			// }
-			// log.Append(msgbyte)
-
-			// log.Append(auditmsg, id, 1)
 		default:
 			panic("Unknown message type")
 		}

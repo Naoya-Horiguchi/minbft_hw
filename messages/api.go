@@ -26,8 +26,9 @@ type MessageImpl interface {
 	NewPrepare(replicaID uint32, view uint64, request Request) Prepare
 	NewCommit(replicaID uint32, prepare Prepare) Commit
 	NewReply(replicaID, clientID uint32, sequence uint64, result []byte) Reply
-	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
+	NewPRWrapped(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) PRWrapped
 	NewAcknowledge(replicaID, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte) Acknowledge
+	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
 }
 
 type Message interface {
@@ -113,9 +114,9 @@ type PeerReviewMessage interface {
 	Authenticator() []byte
 }
 
-type PRWrapMessage interface {
+type PRWrapped interface {
 	PeerReviewMessage
-	ImplementsAuditMessage()
+	ImplementsPRWrapped()
 }
 
 type Acknowledge interface {

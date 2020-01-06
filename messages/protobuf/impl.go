@@ -35,14 +35,18 @@ func (*impl) NewFromBinary(data []byte) (messages.Message, error) {
 	}
 
 	switch t := msg.Type.(type) {
-	case *Message_Audit:
-		audit := newAudit()
-		audit.set(t.Audit)
+	case *Message_Prwrapped:
+		audit := newPRWrapped()
+		audit.set(t.Prwrapped)
 		return audit, nil
 	case *Message_Acknowledge:
 		acknowledge := newAcknowledge()
 		acknowledge.set(t.Acknowledge)
 		return acknowledge, nil
+	case *Message_Audit:
+		audit := newAudit()
+		audit.set(t.Audit)
+		return audit, nil
 	case *Message_Prepare:
 		prep := newPrepare()
 		prep.set(t.Prepare)
@@ -88,8 +92,8 @@ func (*impl) NewReply(r, cl uint32, seq uint64, res []byte) messages.Reply {
 	return m
 }
 
-func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, auth []byte) messages.AuditMessage {
-	m := newAudit()
+func (*impl) NewPRWrapped(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, auth []byte) messages.PRWrapped {
+	m := newPRWrapped()
 	m.init(r, p, msgbyte, prevhash, seq, auth)
 	return m
 }
@@ -97,5 +101,11 @@ func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, 
 func (*impl) NewAcknowledge(r, p uint32, prevhash []byte, seq uint64, auth []byte, msgbyte []byte) messages.Acknowledge {
 	m := newAcknowledge()
 	m.init(r, p, prevhash, seq, auth, msgbyte)
+	return m
+}
+
+func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, auth []byte) messages.AuditMessage {
+	m := newAudit()
+	m.init(r, p, msgbyte, prevhash, seq, auth)
 	return m
 }
