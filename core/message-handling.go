@@ -243,7 +243,12 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
+			case messages.LogHistory:
+				continue
 			case messages.AuditMessage:
+				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), []byte{})
+				logger.Debugf("Send back LogHistory to %d\n", msg2.ReplicaID())
+				log.Append(lhmsg, id, msg2.ReplicaID())
 				continue
 			case messages.PeerReviewMessage:
 				msg, err = messageImpl.NewFromBinary(msg2.ExtractMessage())
@@ -349,6 +354,7 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 			msgBytes, err := msg.MarshalBinary()
 			switch msg.(type) {
 			// case messages.AuditMessage:
+			case messages.LogHistory:
 			case messages.Acknowledge:
 			case messages.AuditMessage:
 			case messages.ReplicaMessage:

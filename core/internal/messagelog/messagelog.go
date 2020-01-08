@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/json"
 
 	"github.com/hyperledger-labs/minbft/api"
 	// "github.com/hyperledger-labs/minbft/core/internal/messagelog"
@@ -52,14 +53,15 @@ type MessageLog interface {
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 	DumpAuthenticators()
+	GenerateLogHistory(seq uint64) []byte
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
 }
 
 type logEntry struct {
+	seq uint64
 	msgType int
-	otherNode uint32
 	msgHash []byte
 }
 
@@ -249,8 +251,8 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		entry := &logEntry{
+			seq: log.logseq,
 			msgType: send,
-			otherNode: replicaID,
 			msgHash: msg,
 		}
 		log.entries[log.logseq] = *entry
@@ -314,6 +316,14 @@ func (log *messageLog) DumpAuthenticators() {
 			fmt.Printf("id:%d, seq:%d auth:%v\n", i, k, v[0:20])
 		}
 	}
+}
+
+func (log *messageLog) GenerateLogHistory(seq uint64) []byte {
+	s, err := json.Marshal(log.entries[seq:])
+	if err != nil {
+		fmt.Printf("failed to get byte array of log entries\n")
+	}
+	return s
 }
 
 func (log *messageLog) startAckTimer(id uint32, seq uint64) {

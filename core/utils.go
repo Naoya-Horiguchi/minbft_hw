@@ -110,6 +110,9 @@ func messageString(msg interface{}) string {
 	case messages.AuditMessage:
 		return fmt.Sprintf("AUDIT<cv=%d replica=%d peer=%d seq=%d>",
 			cv, msg.ReplicaID(), msg.PeerID(), msg.Sequence())
+	case messages.LogHistory:
+		return fmt.Sprintf("LOGHISTORY<cv=%d replica=%d peer=%d seq=%d>",
+			cv, msg.ReplicaID(), msg.PeerID(), msg.Sequence())
 	}
 	return "(unknown message)"
 }

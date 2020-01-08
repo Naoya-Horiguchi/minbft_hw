@@ -35,6 +35,10 @@ func (*impl) NewFromBinary(data []byte) (messages.Message, error) {
 	}
 
 	switch t := msg.Type.(type) {
+	case *Message_Loghistory:
+		loghistory := newLogHistory()
+		loghistory.set(t.Loghistory)
+		return loghistory, nil
 	case *Message_Prwrapped:
 		audit := newPRWrapped()
 		audit.set(t.Prwrapped)
@@ -107,5 +111,11 @@ func (*impl) NewAcknowledge(r, p uint32, prevhash []byte, seq uint64, auth []byt
 func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, auth []byte) messages.AuditMessage {
 	m := newAudit()
 	m.init(r, p, msgbyte, prevhash, seq, auth)
+	return m
+}
+
+func (*impl) NewLogHistory(r, p uint32, logs []byte) messages.LogHistory {
+	m := newLogHistory()
+	m.init(r, p, logs)
 	return m
 }

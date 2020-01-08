@@ -29,6 +29,7 @@ type MessageImpl interface {
 	NewPRWrapped(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) PRWrapped
 	NewAcknowledge(replicaID, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte) Acknowledge
 	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
+	NewLogHistory(replicaID, peerID uint32, logs []byte) LogHistory
 }
 
 type Message interface {
@@ -127,4 +128,9 @@ type Acknowledge interface {
 type AuditMessage interface {
 	PeerReviewMessage
 	ImplementsAuditMessage()
+}
+
+type LogHistory interface {
+	PeerReviewMessage
+	ImplementsLogHistory()
 }

@@ -28,6 +28,7 @@ message Message{
         PRWrapped prwrapped = 5;
         Acknowledge acknowledge = 6;
         Audit audit = 7;
+		Loghistory loghistory = 8;
     }
 }
 
@@ -124,6 +125,15 @@ message Audit {
         bytes prevhash = 4;
         uint64 sequence = 5;
         bytes authenticator = 6;
+    }
+    M msg = 1;
+}
+
+message Loghistory {
+    message M {
+        uint32 replica_id = 1;   // s_i: replica id
+        uint32 peer_id = 2;      // s_j: primary id
+        bytes logs = 3;
     }
     M msg = 1;
 }
