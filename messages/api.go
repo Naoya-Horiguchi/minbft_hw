@@ -132,5 +132,6 @@ type AuditMessage interface {
 
 type LogHistory interface {
 	PeerReviewMessage
+	Logs() []byte
 	ImplementsLogHistory()
 }

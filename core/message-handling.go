@@ -244,10 +244,15 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
 			case messages.LogHistory:
+				// TODO: how to set range?
+				logger.Debugf("Received %s", msgStr)
+				log.VerifyLogHistory(msg2.Logs())
 				continue
 			case messages.AuditMessage:
-				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), []byte{})
-				logger.Debugf("Send back LogHistory to %d\n", msg2.ReplicaID())
+				loghist := log.GenerateLogHistory(uint64(1), uint64(2))
+				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), loghist)
+				// logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), len(loghist))
+				logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), lhmsg)
 				log.Append(lhmsg, id, msg2.ReplicaID())
 				continue
 			case messages.PeerReviewMessage:
@@ -257,8 +262,9 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					continue
 				}
 				msgBytes, err = msg.MarshalBinary()
-				msgStr2 := messageString(msg)
-				logger.Debugf("Received %s, %s", msgStr, msgStr2)
+				msgStr2 := msgStr
+				msgStr = messageString(msg)
+				logger.Debugf("Received %s, %s", msgStr2, msgStr)
 				// TODO: implement store peerrevew logic
 				// TODO: Timeout
 				// TODO: save authenticator
@@ -276,12 +282,14 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
 					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
 					log.Append(ackmsg, id, msg3.ReplicaID())
+					// TODO: forward
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
 						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}
 					log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
+					// TODO: Forward authenticator
 					continue
 				}
 			case messages.Request:

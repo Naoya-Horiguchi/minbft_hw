@@ -53,16 +53,17 @@ type MessageLog interface {
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 	DumpAuthenticators()
-	GenerateLogHistory(seq uint64) []byte
+	GenerateLogHistory(seq, len uint64) []byte
+	VerifyLogHistory([]byte) error
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
 }
 
 type logEntry struct {
-	seq uint64
-	msgType int
-	msgHash []byte
+	Seq uint64
+	MsgType int
+	MsgHash []byte
 }
 
 type authenticator struct {
@@ -84,16 +85,21 @@ type messageLog struct {
 
 	n uint32
 	logseq uint64
-	entries map[uint64]logEntry
+	entries []logEntry
 	hashValue map[uint64][]byte
+
 	// 0: trusted, 1:suspected, 2:exposed
 	faultTable map[uint32]uint32
+	// maintain authenticators from other replicas
 	authenticators map[uint32]map[uint64][]byte
 	auth api.Authenticator
 	msgImpl messages.MessageImpl
+
 	witnesses map[uint32]([]uint32)
 	ackTimers map[uint32]map[uint64]*time.Timer
 	auditTimers map[uint32]*time.Timer
+	// maintain log entries from witness replicas
+	witnessLogHistory map[uint32]map[uint64][]byte
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -119,7 +125,8 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.logseq = uint64(1)
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = GetMsgHash([]byte("seed"))
-	msgLog.entries = make(map[uint64]logEntry)
+	// TODO: make this extensible
+	msgLog.entries = make([]logEntry, 1024)
 	msgLog.faultTable = make(map[uint32]uint32)
 	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
 	msgLog.witnesses = make(map[uint32]([]uint32))
@@ -141,7 +148,8 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 		go func() {
 			i := uint32(0)
 			quit := make(chan struct{})
-			ticker := time.NewTicker(250 * time.Millisecond)
+			ticker := time.NewTicker(1000 * time.Millisecond)
+			time.Sleep(1000 * time.Millisecond)
 			for {
 				select {
 				case <- ticker.C:
@@ -162,7 +170,7 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 }
 
 func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.MessageImpl) {
-	fmt.Print("tick\n")
+	fmt.Printf("Send AUDIT message to replica %d\n", replica)
 	auditmsg := messageImpl.NewAudit(id, 0, []byte{}, []byte{}, 0, []byte{})
 	log.Append(auditmsg, id, replica)
 }
@@ -251,9 +259,9 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		entry := &logEntry{
-			seq: log.logseq,
-			msgType: send,
-			msgHash: msg,
+			Seq: log.logseq,
+			MsgType: send,
+			MsgHash: msg,
 		}
 		log.entries[log.logseq] = *entry
 		log.hashValue[log.logseq] = newHash
@@ -318,17 +326,30 @@ func (log *messageLog) DumpAuthenticators() {
 	}
 }
 
-func (log *messageLog) GenerateLogHistory(seq uint64) []byte {
-	s, err := json.Marshal(log.entries[seq:])
+func (log *messageLog) GenerateLogHistory(seq uint64, len uint64) []byte {
+	// fmt.Printf("aaaA: %v\n", log.entries[0:3])
+	// s, err := json.Marshal(log.entries[0:3])
+	s, err := json.Marshal(log.entries[seq:len+1])
 	if err != nil {
 		fmt.Printf("failed to get byte array of log entries\n")
 	}
+	fmt.Printf("aaaA: %s\n", s)
 	return s
+}
+
+func (log *messageLog) VerifyLogHistory(logHist []byte) error {
+	var entries []logEntry
+	json.Unmarshal(logHist, &entries)
+	for i := 0; i < len(entries); i++ {
+		fmt.Printf("aaaB: %d %d %d %v\n", i, entries[i].Seq, entries[i].MsgType, entries[i].MsgHash)
+	}
+	// TODO: 具体的な検証処理
+	return nil
 }
 
 func (log *messageLog) startAckTimer(id uint32, seq uint64) {
 	timeout := time.Duration(100)*time.Millisecond
-	if seq == uint64(8) {
+	if seq == uint64(2) {
 		timeout = time.Duration(1)*time.Nanosecond
 	}
 	fmt.Printf("start acktimer [%d][%d]\n", id, seq)
