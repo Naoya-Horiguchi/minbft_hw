@@ -243,6 +243,11 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
+			case messages.ForwardAuth:
+				logger.Debugf("Received %s", msgStr)
+				log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
+				log.DumpAuthenticators()
+				continue
 			case messages.LogHistory:
 				// TODO: how to set range?
 				logger.Debugf("Received %s", msgStr)
@@ -277,19 +282,24 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
 					myseq, mylhash, signature := log.GenerateAuthenticator()
 					log.SaveAuthenticator(msg3.ReplicaID(), myseq-1, signature)
+					for _, wid := range log.GetWitnesses(msg3.ReplicaID()) {
+						log.Append(messageImpl.NewForwardAuth(id, wid, myseq-1, signature), id, wid)
+					}
 					mylhash = log.GetLatestHash(uint64(2))
 					// ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
 					ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
 					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
 					log.Append(ackmsg, id, msg3.ReplicaID())
-					// TODO: forward
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
 						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}
-					log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
-					// TODO: Forward authenticator
+					myrid, myseq, myauth := msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator()
+					log.SaveAuthenticator(myrid, myseq, myauth)
+					for _, wid := range log.GetWitnesses(myrid) {
+						log.Append(messageImpl.NewForwardAuth(myrid, wid, myseq, myauth), myrid, wid)
+					}
 					continue
 				}
 			case messages.Request:
@@ -362,6 +372,7 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 			msgBytes, err := msg.MarshalBinary()
 			switch msg.(type) {
 			// case messages.AuditMessage:
+			case messages.ForwardAuth:
 			case messages.LogHistory:
 			case messages.Acknowledge:
 			case messages.AuditMessage:

@@ -30,6 +30,7 @@ type MessageImpl interface {
 	NewAcknowledge(replicaID, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte) Acknowledge
 	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
 	NewLogHistory(replicaID, peerID uint32, logs []byte) LogHistory
+	NewForwardAuth(replicaID, peerID uint32, seq uint64, auth []byte) ForwardAuth
 }
 
 type Message interface {
@@ -134,4 +135,9 @@ type LogHistory interface {
 	PeerReviewMessage
 	Logs() []byte
 	ImplementsLogHistory()
+}
+
+type ForwardAuth interface {
+	PeerReviewMessage
+	ImplementsForwardAuth()
 }

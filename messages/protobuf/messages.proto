@@ -29,6 +29,7 @@ message Message{
         Acknowledge acknowledge = 6;
         Audit audit = 7;
 		Loghistory loghistory = 8;
+		ForwardAuth forwardauth = 9;
     }
 }
 
@@ -134,6 +135,16 @@ message Loghistory {
         uint32 replica_id = 1;   // s_i: replica id
         uint32 peer_id = 2;      // s_j: primary id
         bytes logs = 3;
+    }
+    M msg = 1;
+}
+
+message ForwardAuth {
+    message M {
+        uint32 replica_id = 1;   // s_i: replica id
+        uint32 peer_id = 2;      // s_j: primary id
+        uint64 sequence = 3;
+        bytes authenticator = 4;
     }
     M msg = 1;
 }

@@ -58,6 +58,7 @@ type MessageLog interface {
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
+	GetWitnesses(i uint32) []uint32
 }
 
 type logEntry struct {
@@ -214,6 +215,12 @@ func (log *messageLog) GetLatestHash(i uint64) []byte {
 	return log.hashValue[log.logseq - i]
 }
 
+func (log *messageLog) GetWitnesses(i uint32) []uint32 {
+	log.lock.Lock()
+	defer log.lock.Unlock()
+	// TODO: null check
+	return log.witnesses[i]
+}
 
 func (log *messageLog) SaveAuthenticator(id uint32, seq uint64, auth []byte) {
 	log.authenticators[id][seq] = auth

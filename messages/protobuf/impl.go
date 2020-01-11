@@ -35,6 +35,10 @@ func (*impl) NewFromBinary(data []byte) (messages.Message, error) {
 	}
 
 	switch t := msg.Type.(type) {
+	case *Message_Forwardauth:
+		forwardauth := newForwardAuth()
+		forwardauth.set(t.Forwardauth)
+		return forwardauth, nil
 	case *Message_Loghistory:
 		loghistory := newLogHistory()
 		loghistory.set(t.Loghistory)
@@ -117,5 +121,11 @@ func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, 
 func (*impl) NewLogHistory(r, p uint32, logs []byte) messages.LogHistory {
 	m := newLogHistory()
 	m.init(r, p, logs)
+	return m
+}
+
+func (*impl) NewForwardAuth(r, p uint32, seq uint64, auth []byte) messages.ForwardAuth {
+	m := newForwardAuth()
+	m.init(r, p, seq, auth)
 	return m
 }
