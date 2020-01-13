@@ -244,9 +244,9 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
 			case messages.ForwardAuth:
-				logger.Debugf("Received %s", msgStr)
+				logger.Debugf("### Received %s", msgStr)
 				log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
-				log.DumpAuthenticators()
+				// log.DumpAuthenticators()
 				continue
 			case messages.LogHistory:
 				// TODO: how to set range?
@@ -279,16 +279,23 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 						logger.Errorf("Failed verifying authenticator: A %s", err)
 						continue
 					}
-					log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
+					_, seq2 := log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
 					myseq, mylhash, signature := log.GenerateAuthenticator()
-					log.SaveAuthenticator(msg3.ReplicaID(), myseq-1, signature)
+					fmt.Printf("### SaveAuthenticator from PRWrapped id:%d/seq:%d, and id:%d/seq:%d\n", id, seq2, msg3.ReplicaID(), msg3.Sequence())
+					log.SaveAuthenticator(id, seq2, signature)
+					log.SaveAuthenticator(msg3.ReplicaID(), msg3.Sequence(), signature)
 					for _, wid := range log.GetWitnesses(msg3.ReplicaID()) {
-						log.Append(messageImpl.NewForwardAuth(id, wid, myseq-1, signature), id, wid)
+						if id != wid {
+							// use "myseq-1" for sequence number?
+							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence())
+							log.Append(messageImpl.NewForwardAuth(msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence(), signature), id, wid)
+						}
 					}
 					mylhash = log.GetLatestHash(uint64(2))
-					// ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
-					ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
-					logger.Debugf("Send back Acknowledge to %d as seq:%d\n", msg3.ReplicaID(), myseq-1)
+					// send back ack to sender of the PRWrapped
+					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
+					// ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
+					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), myseq-1)
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
@@ -296,9 +303,13 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 						continue
 					}
 					myrid, myseq, myauth := msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator()
+					fmt.Printf("### SaveAuthenticator from Acknowledge id:%d, seq:%d\n", myrid, myseq)
 					log.SaveAuthenticator(myrid, myseq, myauth)
 					for _, wid := range log.GetWitnesses(myrid) {
-						log.Append(messageImpl.NewForwardAuth(myrid, wid, myseq, myauth), myrid, wid)
+						if id != wid {
+							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, myrid, msg2.PeerID(), myseq)
+							log.Append(messageImpl.NewForwardAuth(myrid, msg2.PeerID(), myseq, myauth), myrid, wid)
+						}
 					}
 					continue
 				}
@@ -377,7 +388,7 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 			case messages.Acknowledge:
 			case messages.AuditMessage:
 			case messages.ReplicaMessage:
-				prwmsg := log.AppendPRlog(1, peerID, msgBytes)
+				prwmsg, _ := log.AppendPRlog(1, peerID, msgBytes)
 				msgBytes, _ = prwmsg.MarshalBinary()
 			}
 			if err != nil {

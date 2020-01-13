@@ -48,7 +48,7 @@ import (
 type MessageLog interface {
 	Append(msg messages.ReplicaMessage, id uint32, peerID uint32)
 	SaveAuthenticator(id uint32, seq uint64, auth []byte)
-	AppendPRlog(send int, replicaID uint32, msgbyte []byte) messages.PeerReviewMessage
+	AppendPRlog(send int, replicaID uint32, msgbyte []byte) (messages.PeerReviewMessage, uint64)
 	VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
@@ -71,7 +71,7 @@ type authenticator struct {
 	stub int
 }
 
-type prlogAppender func(log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage
+type prlogAppender func(log *messageLog, send int, replicaID uint32, msg []byte) (messages.PeerReviewMessage, uint64)
 
 type messageLog struct {
 	lock sync.RWMutex
@@ -174,6 +174,7 @@ func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.
 	fmt.Printf("Send AUDIT message to replica %d\n", replica)
 	auditmsg := messageImpl.NewAudit(id, 0, []byte{}, []byte{}, 0, []byte{})
 	log.Append(auditmsg, id, replica)
+	log.DumpAuthenticators()
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uint32) {
@@ -226,19 +227,19 @@ func (log *messageLog) SaveAuthenticator(id uint32, seq uint64, auth []byte) {
 	log.authenticators[id][seq] = auth
 }
 
-func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
+func (log *messageLog) AppendPRlog(send int, replicaID uint32, msg []byte) (messages.PeerReviewMessage, uint64) {
 	log.lock.Lock()
 	defer log.lock.Unlock()
-
-	return log.appendPRlog(log, send, replicaID, msg)
+	msg2, seq := log.appendPRlog(log, send, replicaID, msg)
+	return msg2, seq
 }
 
 func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl messages.MessageImpl) prlogAppender {
-	return func (log *messageLog, send int, replicaID uint32, msg []byte) messages.PeerReviewMessage {
+	return func (log *messageLog, send int, replicaID uint32, msg []byte) (messages.PeerReviewMessage, uint64) {
 		var prwmsg messages.PeerReviewMessage
 
 		if replicaID == id {
-			return nil
+			return nil, log.logseq
 		}
 
 		// latestHash := log.GetLatestHash(uint64(1))
@@ -259,6 +260,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			}
 			// prwmsg = messageImpl.NewPRWrapped(id, replicaID, msg, latestHash, log.logseq, signature)
 			prwmsg = messageImpl.NewPRWrapped(id, uint32(log.logseq), msg, latestHash, log.logseq, signature)
+			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
 			log.SaveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
 			log.startAckTimer(replicaID, log.logseq)
@@ -273,7 +275,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		log.entries[log.logseq] = *entry
 		log.hashValue[log.logseq] = newHash
 		log.logseq++
-		return prwmsg
+		return prwmsg, log.logseq-1
 	}
 }
 
@@ -326,9 +328,10 @@ func (log *messageLog) Stream(id uint32, done <-chan struct{}) <-chan messages.R
 }
 
 func (log *messageLog) DumpAuthenticators() {
+	fmt.Printf("@@@ ---\n")
 	for i := uint32(0); i < log.n; i++ {
 		for k, v := range log.authenticators[i] {
-			fmt.Printf("id:%d, seq:%d auth:%v\n", i, k, v[0:20])
+			fmt.Printf("@@@ id:%d, seq:%d auth:%v\n", i, k, v[0:20])
 		}
 	}
 }
