@@ -123,7 +123,7 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.msgs = make(map[uint32]([]messages.ReplicaMessage))
 	msgLog.n = n
 	msgLog.newAdded = make(map[uint32](chan<-bool))
-	msgLog.logseq = uint64(1)
+	msgLog.logseq = uint64(0)
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = GetMsgHash([]byte("seed"))
 	// TODO: make this extensible
@@ -243,7 +243,8 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		}
 
 		// latestHash := log.GetLatestHash(uint64(1))
-		latestHash := log.hashValue[log.logseq - 1]
+		latestHash := log.hashValue[log.logseq]
+		log.logseq++
 		x := append(latestHash, GetNumBytes(log.logseq)...)
 		x = append(x, GetNumBytes(uint64(send))...)
 		x = append(x, GetMsgHash(msg)...)
@@ -274,8 +275,8 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 		}
 		log.entries[log.logseq] = *entry
 		log.hashValue[log.logseq] = newHash
-		log.logseq++
-		return prwmsg, log.logseq-1
+		// log.logseq++
+		return prwmsg, log.logseq
 	}
 }
 
@@ -284,7 +285,7 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 	// defer log.lock.Unlock()
 
 	myseq := log.GetSequence()
-	mylhash := log.GetLatestHash(uint64(1))
+	mylhash := log.GetLatestHash(uint64(0))
 	c := make([]byte, 8)
 	binary.LittleEndian.PutUint64(c, myseq)
 	c = append(c, mylhash...)

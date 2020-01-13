@@ -272,7 +272,6 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				logger.Debugf("Received %s, %s", msgStr2, msgStr)
 				// TODO: implement store peerrevew logic
 				// TODO: Timeout
-				// TODO: save authenticator
 				switch msg3 := msg2.(type) {
 				case messages.PRWrapped:
 					if log.VerifyAuthenticator(msg2, 1) != nil {
@@ -283,32 +282,31 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					myseq, mylhash, signature := log.GenerateAuthenticator()
 					fmt.Printf("### SaveAuthenticator from PRWrapped id:%d/seq:%d, and id:%d/seq:%d\n", id, seq2, msg3.ReplicaID(), msg3.Sequence())
 					log.SaveAuthenticator(id, seq2, signature)
-					log.SaveAuthenticator(msg3.ReplicaID(), msg3.Sequence(), signature)
+					log.SaveAuthenticator(msg3.ReplicaID(), msg3.Sequence(), msg3.Authenticator())
 					for _, wid := range log.GetWitnesses(msg3.ReplicaID()) {
 						if id != wid {
 							// use "myseq-1" for sequence number?
 							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence())
-							log.Append(messageImpl.NewForwardAuth(msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence(), signature), id, wid)
+							log.Append(messageImpl.NewForwardAuth(msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence(), msg3.Authenticator()), id, wid)
 						}
 					}
-					mylhash = log.GetLatestHash(uint64(2))
+					mylhash = log.GetLatestHash(uint64(1))
 					// send back ack to sender of the PRWrapped
 					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
-					// ackmsg := messageImpl.NewAcknowledge(id, uint32(msg3.PeerID()), mylhash, myseq, signature, msgBytes)
-					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), myseq-1)
+					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), myseq)
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
 						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}
-					myrid, myseq, myauth := msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator()
+					myrid, mypid, myseq, myauth := msg2.ReplicaID(), msg2.PeerID(), msg2.Sequence(), msg2.Authenticator()
 					fmt.Printf("### SaveAuthenticator from Acknowledge id:%d, seq:%d\n", myrid, myseq)
 					log.SaveAuthenticator(myrid, myseq, myauth)
 					for _, wid := range log.GetWitnesses(myrid) {
 						if id != wid {
-							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, myrid, msg2.PeerID(), myseq)
-							log.Append(messageImpl.NewForwardAuth(myrid, msg2.PeerID(), myseq, myauth), myrid, wid)
+							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, myrid, mypid, myseq)
+							log.Append(messageImpl.NewForwardAuth(myrid, mypid, myseq, myauth), myrid, wid)
 						}
 					}
 					continue
