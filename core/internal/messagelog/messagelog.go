@@ -55,6 +55,7 @@ type MessageLog interface {
 	DumpAuthenticators()
 	GenerateLogHistory(seq, len uint64) []byte
 	VerifyLogHistory([]byte) error
+	StopAckTimer(id uint32, seq uint64)
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -174,7 +175,7 @@ func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.
 	fmt.Printf("Send AUDIT message to replica %d\n", replica)
 	auditmsg := messageImpl.NewAudit(id, 0, []byte{}, []byte{}, 0, []byte{})
 	log.Append(auditmsg, id, replica)
-	log.DumpAuthenticators()
+	// log.DumpAuthenticators()
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uint32) {
@@ -312,12 +313,6 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, 
 	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, rid, b, msgaudit.Authenticator()); err != nil {
 		return fmt.Errorf("Failed verifying authenticator: C %s", err)
 	}
-	log.stopAckTimer(rid, uint64(msgaudit.PeerID()))
-	// log.stopAckTimer(uint32(0), seq)
-	if log.faultTable[rid] == 1 {
-		fmt.Printf("Received Ack message from 'suspended' replica %d, so set its status as 'trusted'.\n", rid)
-		log.faultTable[rid] = 0
-	}
 	return nil
 }
 
@@ -363,18 +358,23 @@ func (log *messageLog) startAckTimer(id uint32, seq uint64) {
 	if seq == uint64(2) {
 		timeout = time.Duration(1)*time.Nanosecond
 	}
-	fmt.Printf("start acktimer [%d][%d]\n", id, seq)
+	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
-		fmt.Printf("AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
+		fmt.Printf(">>> AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
 		log.faultTable[id] = 1
 	})
 }
 
-func (log *messageLog) stopAckTimer(id uint32, seq uint64) {
-	fmt.Printf("stop acktimer [%d][%d]\n", id, seq)
+func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
+	if log.faultTable[id] == 1 {
+		fmt.Printf(">>> Received Ack message from 'suspended' replica %d, so set its status as 'trusted'.\n", id)
+		log.faultTable[id] = 0
+	}
+
+	fmt.Printf(">>> stop acktimer [%d][%d]\n", id, seq)
 	if log.ackTimers[id][seq] != nil {
-		fmt.Printf("Stop timer for replica:%d, seq:%d\n", id, seq)
+		fmt.Printf(">>> Stop timer for replica:%d, seq:%d\n", id, seq)
 		log.ackTimers[id][seq].Stop()
 	}
 }

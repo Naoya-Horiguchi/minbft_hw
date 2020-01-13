@@ -30,7 +30,7 @@ func newAcknowledge() *acknowledge {
 	return &acknowledge{}
 }
 
-func (m *acknowledge) init(r, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte) {
+func (m *acknowledge) init(r, peerID uint32, prevhash []byte, seq uint64, auth []byte, msg []byte, origseq uint64) {
 	m.Acknowledge = Acknowledge{Msg: &Acknowledge_M{
 		ReplicaId: r,
 		PeerId: peerID,
@@ -38,6 +38,7 @@ func (m *acknowledge) init(r, peerID uint32, prevhash []byte, seq uint64, auth [
 		Sequence: seq,
 		Authenticator: auth,
 		Msg: msg,
+		Origseq: origseq,
 	}}
 }
 
@@ -67,6 +68,10 @@ func (m *acknowledge) Sequence() uint64 {
 
 func (m *acknowledge) Authenticator() []byte {
 	return m.Msg.GetAuthenticator()
+}
+
+func (m *acknowledge) OrigSeq() uint64 {
+	return m.Msg.GetOrigseq()
 }
 
 func (m *acknowledge) ExtractMessage() []byte {

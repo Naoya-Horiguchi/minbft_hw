@@ -114,6 +114,7 @@ message Acknowledge {
         uint64 sequence = 4;
         bytes authenticator = 5;
         bytes msg = 6;
+		uint64 origseq = 7;
     }
     M msg = 1;
 }

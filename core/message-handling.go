@@ -292,14 +292,16 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					}
 					mylhash = log.GetLatestHash(uint64(1))
 					// send back ack to sender of the PRWrapped
-					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes)
-					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), myseq)
+					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes, msg3.Sequence())
+					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if log.VerifyAuthenticator(msg2, 0) != nil {
 						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}
+					// STOP ACKTIMER
+					log.StopAckTimer(msg3.ReplicaID(), msg3.OrigSeq())
 					myrid, mypid, myseq, myauth := msg2.ReplicaID(), msg2.PeerID(), msg2.Sequence(), msg2.Authenticator()
 					fmt.Printf("### SaveAuthenticator from Acknowledge id:%d, seq:%d\n", myrid, myseq)
 					log.SaveAuthenticator(myrid, myseq, myauth)

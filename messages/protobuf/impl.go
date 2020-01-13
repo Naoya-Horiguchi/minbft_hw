@@ -106,9 +106,9 @@ func (*impl) NewPRWrapped(r, p uint32, msgbyte []byte, prevhash []byte, seq uint
 	return m
 }
 
-func (*impl) NewAcknowledge(r, p uint32, prevhash []byte, seq uint64, auth []byte, msgbyte []byte) messages.Acknowledge {
+func (*impl) NewAcknowledge(r, p uint32, prevhash []byte, seq uint64, auth []byte, msgbyte []byte, origseq uint64) messages.Acknowledge {
 	m := newAcknowledge()
-	m.init(r, p, prevhash, seq, auth, msgbyte)
+	m.init(r, p, prevhash, seq, auth, msgbyte, origseq)
 	return m
 }
 
