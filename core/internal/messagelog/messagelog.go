@@ -53,8 +53,8 @@ type MessageLog interface {
 	GenerateAuthenticator() (uint64, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 	DumpAuthenticators()
-	GenerateLogHistory(seq, len uint64) []byte
-	VerifyLogHistory([]byte) error
+	GenerateLogHistory(seq, len uint64) ([]byte, []byte)
+	VerifyLogHistory(replicaID uint32, seq uint64, loghist []byte, hash []byte) error
 	StopAckTimer(id uint32, seq uint64)
 
 	GetSequence() uint64
@@ -102,6 +102,7 @@ type messageLog struct {
 	auditTimers map[uint32]*time.Timer
 	// maintain log entries from witness replicas
 	witnessLogHistory map[uint32]map[uint64][]byte
+	witnessLogConfirmed map[uint32]uint64
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -134,12 +135,14 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.witnesses = make(map[uint32]([]uint32))
 	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
 	msgLog.auditTimers = make(map[uint32]*time.Timer)
+	msgLog.witnessLogConfirmed = make(map[uint32]uint64)
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 		msgLog.authenticators[i] = make(map[uint64][]byte)
 		// TODO: control witness number from parameter.
 		msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1)%n)
 		msgLog.ackTimers[i] = make(map[uint64]*time.Timer)
+		msgLog.witnessLogConfirmed[i] = uint64(0)
 	}
 	fmt.Printf("%v\n", msgLog.witnesses)
 	msgLog.auth = authenticator
@@ -172,8 +175,8 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 }
 
 func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.MessageImpl) {
-	fmt.Printf("Send AUDIT message to replica %d\n", replica)
-	auditmsg := messageImpl.NewAudit(id, 0, []byte{}, []byte{}, 0, []byte{})
+	fmt.Printf("Send AUDIT message to replica %d, since %d\n", replica, log.witnessLogConfirmed[replica])
+	auditmsg := messageImpl.NewAudit(id, replica, []byte{}, []byte{}, log.witnessLogConfirmed[replica], []byte{})
 	log.Append(auditmsg, id, replica)
 	// log.DumpAuthenticators()
 }
@@ -332,24 +335,61 @@ func (log *messageLog) DumpAuthenticators() {
 	}
 }
 
-func (log *messageLog) GenerateLogHistory(seq uint64, len uint64) []byte {
+func (log *messageLog) GenerateLogHistory(seq uint64, len uint64) ([]byte, []byte) {
+	// TODO: need locking
 	// fmt.Printf("aaaA: %v\n", log.entries[0:3])
 	// s, err := json.Marshal(log.entries[0:3])
-	s, err := json.Marshal(log.entries[seq:len+1])
+	if seq == log.logseq {
+		// TODO: timeout/challenge check
+		fmt.Printf("AAA: no new log entries since %d\n", seq)
+		return []byte{}, nil
+	}
+	fmt.Printf("AAA: generate log history, from %d to %d\n", seq, log.logseq)
+	s, err := json.Marshal(log.entries[(seq+1):log.logseq+1])
 	if err != nil {
 		fmt.Printf("failed to get byte array of log entries\n")
+		return []byte{}, nil
 	}
-	fmt.Printf("aaaA: %s\n", s)
-	return s
+	// fmt.Printf("aaaA: %s\n", s)
+	// return s, log.GetLatestHash(seq)
+	return s, log.hashValue[seq]
 }
 
-func (log *messageLog) VerifyLogHistory(logHist []byte) error {
+func nextHashValue(seq uint64, send uint32, msghash []byte, basehash []byte) ([]byte, []byte) {
+	x := append(basehash, GetNumBytes(seq)...)
+	x = append(x, GetNumBytes(uint64(send))...)
+	x = append(x, msghash...)
+	verifyHash := GetMsgHash(x)
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, seq)
+	b = append(b, verifyHash...)
+	return verifyHash, GetMsgHash(x)
+}
+
+func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, hash []byte) error {
 	var entries []logEntry
 	json.Unmarshal(logHist, &entries)
 	for i := 0; i < len(entries); i++ {
-		fmt.Printf("aaaB: %d %d %d %v\n", i, entries[i].Seq, entries[i].MsgType, entries[i].MsgHash)
+		// seq := log.witnessLogConfirmed[id] + uint64(i + 1)
+		tmpseq := seq + uint64(i + 1)
+		hash, tmpauth := nextHashValue(tmpseq, uint32(entries[i].MsgType), entries[i].MsgHash, hash)
+		if log.authenticators[id][tmpseq] == nil {
+			fmt.Printf("BBB: Authenticator id:%d, seq:%d not found\n", id, tmpseq)
+			continue
+		}
+		if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, id, tmpauth, log.authenticators[id][tmpseq]); err != nil {
+			fmt.Printf("BBB: Failed to verify Log history of replica %d, so consider it as 'exposed' one.\n")
+			log.faultTable[id] = 2
+			return fmt.Errorf("Failed verifying authenticator: C id:%d, seq:%d, %s", id, tmpseq, err)
+		}
 	}
-	// TODO: 具体的な検証処理
+	// TODO: message replay for Audit protocol
+	fmt.Printf("BBB: get %d entries since seq:%d\n", len(entries), log.witnessLogConfirmed[id])
+	if log.faultTable[id] == 2 {
+		fmt.Printf("BBB: Verified log history from 'exposed' replica %d, so set its status back to 'trusted'.\n", id)
+		log.faultTable[id] = 0
+	}
+	log.witnessLogConfirmed[id] += uint64(len(entries))
 	return nil
 }
 
@@ -368,7 +408,7 @@ func (log *messageLog) startAckTimer(id uint32, seq uint64) {
 
 func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
 	if log.faultTable[id] == 1 {
-		fmt.Printf(">>> Received Ack message from 'suspended' replica %d, so set its status as 'trusted'.\n", id)
+		fmt.Printf(">>> Received Ack message from 'suspended' replica %d, so set its status back to 'trusted'.\n", id)
 		log.faultTable[id] = 0
 	}
 

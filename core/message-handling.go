@@ -251,11 +251,11 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			case messages.LogHistory:
 				// TODO: how to set range?
 				logger.Debugf("Received %s", msgStr)
-				log.VerifyLogHistory(msg2.Logs())
+				log.VerifyLogHistory(msg2.ReplicaID(), msg2.Sequence(), msg2.Logs(), msg2.Hash())
 				continue
 			case messages.AuditMessage:
-				loghist := log.GenerateLogHistory(uint64(1), uint64(2))
-				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), loghist)
+				loghist, hash := log.GenerateLogHistory(msg2.Sequence(), uint64(2))
+				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), msg2.Sequence(), loghist, hash)
 				// logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), len(loghist))
 				logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), lhmsg)
 				log.Append(lhmsg, id, msg2.ReplicaID())

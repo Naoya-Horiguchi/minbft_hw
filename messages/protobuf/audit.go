@@ -30,6 +30,7 @@ func newAudit() *audit {
 	return &audit{}
 }
 
+// use seq as "lastest log-confirmed sequence"
 func (m *audit) init(r, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) {
 	m.Audit = Audit{Msg: &Audit_M{
 		ReplicaId: r,

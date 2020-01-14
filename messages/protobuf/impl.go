@@ -118,9 +118,9 @@ func (*impl) NewAudit(r, p uint32, msgbyte []byte, prevhash []byte, seq uint64, 
 	return m
 }
 
-func (*impl) NewLogHistory(r, p uint32, logs []byte) messages.LogHistory {
+func (*impl) NewLogHistory(r, p uint32, seq uint64, logs []byte, hash []byte) messages.LogHistory {
 	m := newLogHistory()
-	m.init(r, p, logs)
+	m.init(r, p, seq, logs, hash)
 	return m
 }
 

@@ -26,11 +26,13 @@ func newLogHistory() *loghistory {
 	return &loghistory{}
 }
 
-func (m *loghistory) init(r, peerID uint32, logs []byte) {
+func (m *loghistory) init(r, peerID uint32, seq uint64, logs []byte, hash []byte) {
 	m.Loghistory = Loghistory{Msg: &Loghistory_M{
 		ReplicaId: r,
 		PeerId: peerID,
+		Sequence: seq,
 		Logs: logs,
+		Hash: hash,
 	}}
 }
 
@@ -55,7 +57,7 @@ func (m *loghistory) PrevHash() []byte {
 }
 
 func (m *loghistory) Sequence() uint64 {
-	return uint64(0)
+	return m.Msg.GetSequence()
 }
 
 func (m *loghistory) Authenticator() []byte {
@@ -68,6 +70,10 @@ func (m *loghistory) ExtractMessage() []byte {
 
 func (m *loghistory) Logs() []byte {
 	return m.Msg.GetLogs()
+}
+
+func (m *loghistory) Hash() []byte {
+	return m.Msg.GetHash()
 }
 
 func (loghistory) ImplementsReplicaMessage() {}
