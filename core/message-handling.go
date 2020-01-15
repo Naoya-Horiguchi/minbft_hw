@@ -256,8 +256,8 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			case messages.AuditMessage:
 				loghist, hash := log.GenerateLogHistory(msg2.Sequence(), uint64(2))
 				lhmsg := messageImpl.NewLogHistory(id, uint32(msg2.ReplicaID()), msg2.Sequence(), loghist, hash)
-				// logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), len(loghist))
-				logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), lhmsg)
+				logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), len(loghist))
+				// logger.Debugf("Send back LogHistory to %d, %v\n", msg2.ReplicaID(), lhmsg)
 				log.Append(lhmsg, id, msg2.ReplicaID())
 				continue
 			case messages.PeerReviewMessage:

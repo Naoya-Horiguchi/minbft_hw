@@ -98,6 +98,7 @@ type messageLog struct {
 	msgImpl messages.MessageImpl
 
 	witnesses map[uint32]([]uint32)
+	witnessed map[uint32]([]uint32)
 	ackTimers map[uint32]map[uint64]*time.Timer
 	auditTimers map[uint32]*time.Timer
 	// maintain log entries from witness replicas
@@ -129,10 +130,11 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.hashValue = make(map[uint64][]byte)
 	msgLog.hashValue[uint64(0)] = GetMsgHash([]byte("seed"))
 	// TODO: make this extensible
-	msgLog.entries = make([]logEntry, 1024)
+	msgLog.entries = make([]logEntry, 1024*100)
 	msgLog.faultTable = make(map[uint32]uint32)
 	msgLog.authenticators = make(map[uint32]map[uint64][]byte)
 	msgLog.witnesses = make(map[uint32]([]uint32))
+	msgLog.witnessed = make(map[uint32]([]uint32))
 	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
 	msgLog.auditTimers = make(map[uint32]*time.Timer)
 	msgLog.witnessLogConfirmed = make(map[uint32]uint64)
@@ -141,15 +143,17 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 		msgLog.authenticators[i] = make(map[uint64][]byte)
 		// TODO: control witness number from parameter.
 		msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1)%n)
+		msgLog.witnessed[(i+1)%n] = append(msgLog.witnessed[(i+1)%n], i)
 		msgLog.ackTimers[i] = make(map[uint64]*time.Timer)
 		msgLog.witnessLogConfirmed[i] = uint64(0)
 	}
-	fmt.Printf("%v\n", msgLog.witnesses)
+	fmt.Printf("witnesses %v\n", msgLog.witnesses)
+	fmt.Printf("witnessed %v\n", msgLog.witnessed)
 	msgLog.auth = authenticator
 	msgLog.msgImpl = messageImpl
 	// Initialize timer for each witness replicas
-	for _, v := range msgLog.witnesses[id] {
-		fmt.Printf("my witness replica: %d\n", v)
+	for _, v := range msgLog.witnessed[id] {
+		fmt.Printf("my audit target replica: %d\n", v)
 		go func() {
 			i := uint32(0)
 			quit := make(chan struct{})
@@ -258,11 +262,13 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			b := make([]byte, 8)
 			binary.LittleEndian.PutUint64(b, log.logseq)
 			b = append(b, newHash...)
+			// fmt.Printf("CCC: sigpayload:%v\n", b)
 			signature, err := authenticator.GenerateMessageAuthenTag(api.ReplicaAuthen, b)
 			if err != nil {
 				fmt.Printf("failed to generate signature %s\n", err)
 				panic(err) // Supplied Authenticator must be able to sing
 			}
+			// fmt.Printf("CCC: signature:%v\n", signature[0:20])
 			// prwmsg = messageImpl.NewPRWrapped(id, replicaID, msg, latestHash, log.logseq, signature)
 			prwmsg = messageImpl.NewPRWrapped(id, uint32(log.logseq), msg, latestHash, log.logseq, signature)
 			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
@@ -272,6 +278,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			// log.startAckTimer(uint32(0), log.logseq)
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
+		// fmt.Printf("CCC: lhash:%v, hashseed:%v\n", latestHash, x)
 		entry := &logEntry{
 			Seq: log.logseq,
 			MsgType: send,
@@ -293,7 +300,10 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 	c := make([]byte, 8)
 	binary.LittleEndian.PutUint64(c, myseq)
 	c = append(c, mylhash...)
+	// fmt.Printf("CCC: seq:%d\n", log.logseq)
+	// fmt.Printf("CCC: sigpayload:%v\n", c)
 	signature, err := log.auth.GenerateMessageAuthenTag(api.ReplicaAuthen, c)
+	// fmt.Printf("CCC: signature:%v\n", signature[0:20])
 	if err != nil {
 		panic(err) // Supplied Authenticator must be able to sign
 	}
@@ -355,41 +365,47 @@ func (log *messageLog) GenerateLogHistory(seq uint64, len uint64) ([]byte, []byt
 	return s, log.hashValue[seq]
 }
 
+// return hash_k, and auth payload
 func nextHashValue(seq uint64, send uint32, msghash []byte, basehash []byte) ([]byte, []byte) {
 	x := append(basehash, GetNumBytes(seq)...)
 	x = append(x, GetNumBytes(uint64(send))...)
-	x = append(x, msghash...)
+	x = append(x, GetMsgHash(msghash)...)
 	verifyHash := GetMsgHash(x)
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, seq)
 	b = append(b, verifyHash...)
-	return verifyHash, GetMsgHash(x)
+	return verifyHash, b
 }
 
 func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, hash []byte) error {
 	var entries []logEntry
 	json.Unmarshal(logHist, &entries)
-	for i := 0; i < len(entries); i++ {
-		// seq := log.witnessLogConfirmed[id] + uint64(i + 1)
+	tmphash := hash
+	var tmpauthpayload []byte
+	var i int
+	// fmt.Printf("BBB: verifyLogHistory id:%d, seq:%d, len:%d\n", id, seq, len(entries))
+	for i = 0; i < len(entries); i++ {
 		tmpseq := seq + uint64(i + 1)
-		hash, tmpauth := nextHashValue(tmpseq, uint32(entries[i].MsgType), entries[i].MsgHash, hash)
+		tmphash, tmpauthpayload = nextHashValue(tmpseq, uint32(entries[i].MsgType), entries[i].MsgHash, tmphash)
 		if log.authenticators[id][tmpseq] == nil {
 			fmt.Printf("BBB: Authenticator id:%d, seq:%d not found\n", id, tmpseq)
-			continue
+			break // continue
 		}
-		if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, id, tmpauth, log.authenticators[id][tmpseq]); err != nil {
-			fmt.Printf("BBB: Failed to verify Log history of replica %d, so consider it as 'exposed' one.\n")
+		if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, id, tmpauthpayload, log.authenticators[id][tmpseq]); err != nil {
+			fmt.Printf("BBB: Failed to verify Log history of replica %d, seq %d, so consider it as 'exposed' one.\n", id, tmpseq)
+			fmt.Printf("BBB: %v\n", log.authenticators[id][tmpseq])
+			log.DumpAuthenticators()
 			log.faultTable[id] = 2
 			return fmt.Errorf("Failed verifying authenticator: C id:%d, seq:%d, %s", id, tmpseq, err)
 		}
 	}
 	// TODO: message replay for Audit protocol
-	fmt.Printf("BBB: get %d entries since seq:%d\n", len(entries), log.witnessLogConfirmed[id])
+	fmt.Printf("BBB: id:%d entries since seq:%d\n", i, log.witnessLogConfirmed[id])
 	if log.faultTable[id] == 2 {
 		fmt.Printf("BBB: Verified log history from 'exposed' replica %d, so set its status back to 'trusted'.\n", id)
 		log.faultTable[id] = 0
 	}
-	log.witnessLogConfirmed[id] += uint64(len(entries))
+	log.witnessLogConfirmed[id] += uint64(i)
 	return nil
 }
 
