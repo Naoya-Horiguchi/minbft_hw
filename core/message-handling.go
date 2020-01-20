@@ -296,7 +296,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
-					if log.VerifyAuthenticator(msg2, 0) != nil {
+					if err = log.VerifyAuthenticator(msg2, 0); err != nil {
 						logger.Errorf("Failed verifying authenticator: B %s", err)
 						continue
 					}

@@ -232,6 +232,12 @@ func (log *messageLog) GetWitnesses(i uint32) []uint32 {
 }
 
 func (log *messageLog) SaveAuthenticator(id uint32, seq uint64, auth []byte) {
+	log.lock.Lock()
+	defer log.lock.Unlock()
+	log.saveAuthenticator(id, seq, auth)
+}
+
+func (log *messageLog) saveAuthenticator(id uint32, seq uint64, auth []byte) {
 	log.authenticators[id][seq] = auth
 }
 
@@ -272,7 +278,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			// prwmsg = messageImpl.NewPRWrapped(id, replicaID, msg, latestHash, log.logseq, signature)
 			prwmsg = messageImpl.NewPRWrapped(id, uint32(log.logseq), msg, latestHash, log.logseq, signature)
 			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
-			log.SaveAuthenticator(id, log.logseq, signature)
+			log.saveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
 			log.startAckTimer(replicaID, log.logseq)
 			// log.startAckTimer(uint32(0), log.logseq)
@@ -410,10 +416,10 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 }
 
 func (log *messageLog) startAckTimer(id uint32, seq uint64) {
-	timeout := time.Duration(100)*time.Millisecond
-	if seq == uint64(2) {
-		timeout = time.Duration(1)*time.Nanosecond
-	}
+	timeout := time.Duration(10000)*time.Millisecond
+	// if seq == uint64(2) {
+	// 	timeout = time.Duration(1)*time.Nanosecond
+	// }
 	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
