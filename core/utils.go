@@ -116,6 +116,9 @@ func messageString(msg interface{}) string {
 	case messages.ForwardAuth:
 		return fmt.Sprintf("FORWARDAUTH<cv=%d replica=%d peer=%d seq=%d>",
 			cv, msg.ReplicaID(), msg.PeerID(), msg.Sequence())
+	case messages.Challenge:
+		return fmt.Sprintf("CHALLENGE<cv=%d replica=%d peer=%d, faulty=%d>",
+			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID())
 	}
 	return "(unknown message)"
 }

@@ -30,6 +30,7 @@ message Message{
         Audit audit = 7;
 		Loghistory loghistory = 8;
 		ForwardAuth forwardauth = 9;
+		Challenge challenge = 10;
     }
 }
 
@@ -148,6 +149,15 @@ message ForwardAuth {
         uint32 peer_id = 2;      // s_j: primary id
         uint64 sequence = 3;
         bytes authenticator = 4;
+    }
+    M msg = 1;
+}
+
+message Challenge {
+    message M {
+        uint32 replica_id = 1;   // s_i: replica id
+        uint32 peer_id = 2;      // s_j: primary id
+		uint32 faulty_id = 3;
     }
     M msg = 1;
 }

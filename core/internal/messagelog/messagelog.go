@@ -56,6 +56,7 @@ type MessageLog interface {
 	GenerateLogHistory(seq, len uint64) ([]byte, []byte)
 	VerifyLogHistory(replicaID uint32, seq uint64, loghist []byte, hash []byte) error
 	StopAckTimer(id uint32, seq uint64)
+	SetFaulty(id, faulty uint32)
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -280,7 +281,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
 			log.saveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
-			log.startAckTimer(replicaID, log.logseq)
+			log.startAckTimer(id, replicaID, log.logseq)
 			// log.startAckTimer(uint32(0), log.logseq)
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
@@ -407,6 +408,11 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 	}
 	// TODO: message replay for Audit protocol
 	fmt.Printf("BBB: id:%d entries since seq:%d\n", i, log.witnessLogConfirmed[id])
+	// maybe shouldn't be clear faulty status if it's once exposed.
+	if log.faultTable[id] == 1 {
+		fmt.Printf("BBB: Verified log history from 'suspended' replica %d, so set the status back to 'trusted'.\n", id)
+		log.faultTable[id] = 0
+	}
 	if log.faultTable[id] == 2 {
 		fmt.Printf("BBB: Verified log history from 'exposed' replica %d, so set its status back to 'trusted'.\n", id)
 		log.faultTable[id] = 0
@@ -415,17 +421,32 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 	return nil
 }
 
-func (log *messageLog) startAckTimer(id uint32, seq uint64) {
+func (log *messageLog) startAckTimer(myid, id uint32, seq uint64) {
 	timeout := time.Duration(10000)*time.Millisecond
-	// if seq == uint64(2) {
-	// 	timeout = time.Duration(1)*time.Nanosecond
-	// }
+	if seq == uint64(2) {
+		timeout = time.Duration(1)*time.Nanosecond
+	}
 	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
 		fmt.Printf(">>> AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
-		log.faultTable[id] = 1
+		for _, wid := range log.GetWitnesses(id) {
+			if myid == wid {
+				log.faultTable[id] = 1
+			} else {
+				fmt.Printf(">>> send challenge to %d for claiming %d\n", wid, id)
+				challenge := log.msgImpl.NewChallenge(myid, wid, id)
+				log.Append(challenge, myid, wid)
+			}
+		}
 	})
+}
+
+func (log *messageLog) SetFaulty(id, fault uint32) {
+	if log.faultTable[id] == 0 {
+		fmt.Printf(">>> Consider replica %d as faulty state %d (1 is 'suspended', 2 is 'exposed').\n", id, fault)
+		log.faultTable[id] = fault
+	}
 }
 
 func (log *messageLog) StopAckTimer(id uint32, seq uint64) {

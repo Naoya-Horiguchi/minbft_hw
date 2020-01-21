@@ -243,6 +243,10 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 
 			msgStr := messageString(msg)
 			switch msg2 := msg.(type) {
+			case messages.Challenge:
+				logger.Debugf("### Received %s", msgStr)
+				log.SetFaulty(msg2.FaultID(), 1)
+				continue
 			case messages.ForwardAuth:
 				logger.Debugf("### Received %s", msgStr)
 				log.SaveAuthenticator(msg2.ReplicaID(), msg2.Sequence(), msg2.Authenticator())
@@ -383,6 +387,7 @@ func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessa
 			msgBytes, err := msg.MarshalBinary()
 			switch msg.(type) {
 			// case messages.AuditMessage:
+			case messages.Challenge:
 			case messages.ForwardAuth:
 			case messages.LogHistory:
 			case messages.Acknowledge:
