@@ -21,6 +21,7 @@ package messagelog
 import (
 	"time"
 	"sync"
+	"bytes"
 
 	"fmt"
 	"crypto/sha1"
@@ -57,6 +58,7 @@ type MessageLog interface {
 	VerifyLogHistory(replicaID uint32, seq uint64, loghist []byte, hash []byte) error
 	StopAckTimer(id uint32, seq uint64)
 	SetFaulty(id, faulty uint32)
+	FindSeqFromMsg(msg []byte) uint64
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -281,7 +283,7 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
 			log.saveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
-			log.startAckTimer(id, replicaID, log.logseq)
+			log.startAckTimer(id, replicaID, log.logseq, msg)
 			// log.startAckTimer(uint32(0), log.logseq)
 		}
 		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
@@ -421,7 +423,7 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 	return nil
 }
 
-func (log *messageLog) startAckTimer(myid, id uint32, seq uint64) {
+func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 	timeout := time.Duration(10000)*time.Millisecond
 	if seq == uint64(2) {
 		timeout = time.Duration(1)*time.Nanosecond
@@ -434,11 +436,14 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64) {
 			if myid == wid {
 				log.faultTable[id] = 1
 			} else {
-				fmt.Printf(">>> send challenge to %d for claiming %d\n", wid, id)
-				challenge := log.msgImpl.NewChallenge(myid, wid, id)
-				log.Append(challenge, myid, wid)
+				fmt.Printf(">>> send 'audit challenge' to %d for suspecting %d\n", wid, id)
+				// This is a audit challenge
+				log.Append(log.msgImpl.NewChallenge(myid, wid, id, 1, msg), myid, wid)
 			}
 		}
+		// send challenge
+		fmt.Printf(">>> send 'send challenge' to %d\n", id)
+		log.Append(log.msgImpl.NewChallenge(myid, id, id, 0, msg), myid, id)
 	})
 }
 
@@ -447,6 +452,18 @@ func (log *messageLog) SetFaulty(id, fault uint32) {
 		fmt.Printf(">>> Consider replica %d as faulty state %d (1 is 'suspended', 2 is 'exposed').\n", id, fault)
 		log.faultTable[id] = fault
 	}
+}
+
+func (log *messageLog) FindSeqFromMsg(msg []byte) uint64 {
+	log.lock.Lock()
+	defer log.lock.Unlock()
+
+	for i := log.logseq; i > uint64(0); i-- {
+		if bytes.Equal(log.entries[i].MsgHash, msg) {
+			return i
+		}
+	}
+	return uint64(0)
 }
 
 func (log *messageLog) StopAckTimer(id uint32, seq uint64) {

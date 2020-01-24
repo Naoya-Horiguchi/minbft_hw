@@ -245,7 +245,20 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			switch msg2 := msg.(type) {
 			case messages.Challenge:
 				logger.Debugf("### Received %s", msgStr)
-				log.SetFaulty(msg2.FaultID(), 1)
+				switch msg2.Ctype() {
+				case 0: // send challenge
+					// reply ack need to recreate ack, msg2 should contain msghash
+					// msg, err = messageImpl.NewFromBinary(msg2.Msg())
+					seq := log.FindSeqFromMsg(msg2.Origmsg())
+					logger.Debugf("YYY: Received %d", seq)
+					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes, msg3.Sequence())
+					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
+					log.Append(ackmsg, id, msg3.ReplicaID())
+					// TODO: must accept msg if the message is never accepted by this node. but we have not enough time to implement it.
+				case 1: // audit challenge
+					// reply logHistory
+					log.SetFaulty(msg2.FaultID(), 1)
+				}
 				continue
 			case messages.ForwardAuth:
 				logger.Debugf("### Received %s", msgStr)
