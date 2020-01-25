@@ -60,6 +60,8 @@ func init() {
 		requestCmd.Flags().Lookup("id")))
 	requestCmd.Flags().String("timeout", "0", "Timeout for the request")
 	must(viper.BindPFlag("client.timeout", requestCmd.Flags().Lookup("timeout")))
+	requestCmd.Flags().String("rps", "0", "RPS")
+	must(viper.BindPFlag("client.rps", requestCmd.Flags().Lookup("rps")))
 }
 
 type clientStack struct {
@@ -119,14 +121,25 @@ func requests(args []string) ([]byte, error) {
 		return nil, fmt.Errorf("Failed to create client instance: %s", err)
 	}
 
+	rps := viper.GetDuration("client.rps")
+	pitch := time.Second / rps
+	deadline := time.Now()
 	if len(args) > 0 {
 		for _, arg := range args {
+			deadline = deadline.Add(pitch)
 			request(client, arg)
+			if time.Now().Before(deadline) {
+				time.Sleep(deadline.Sub(time.Now()))
+			}
 		}
 	} else {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
+			deadline = deadline.Add(pitch)
 			request(client, scanner.Text())
+			if time.Now().Before(deadline) {
+				time.Sleep(deadline.Sub(time.Now()))
+			}
 		}
 	}
 
