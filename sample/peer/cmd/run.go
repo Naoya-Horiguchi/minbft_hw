@@ -80,6 +80,10 @@ func init() {
 	rootCmd.PersistentFlags().String("logging-file", "", "logging file")
 	must(viper.BindPFlag("logging.file",
 		rootCmd.PersistentFlags().Lookup("logging-file")))
+
+	runCmd.Flags().Int("witnesses", 1, "nr of witnesses")
+	must(viper.BindPFlag("replica.witnesses",
+		runCmd.Flags().Lookup("witnesses")))
 }
 
 type replicaStack struct {

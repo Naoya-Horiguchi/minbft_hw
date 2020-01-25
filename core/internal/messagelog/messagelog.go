@@ -28,6 +28,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 
+	"github.com/spf13/viper"
 	"github.com/hyperledger-labs/minbft/api"
 	// "github.com/hyperledger-labs/minbft/core/internal/messagelog"
 	"github.com/hyperledger-labs/minbft/messages"
@@ -143,12 +144,16 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
 	msgLog.auditTimers = make(map[uint32]*time.Timer)
 	msgLog.witnessLogConfirmed = make(map[uint32]uint64)
+	nr_witnesses := uint32(viper.GetInt("replica.witnesses"))
+	fmt.Printf("nr of witnesses: %d\n", nr_witnesses)
 	for i := uint32(0); i < n; i++ {
 		msgLog.faultTable[i] = 0
 		msgLog.authenticators[i] = make(map[uint64][]byte)
 		// TODO: control witness number from parameter.
-		msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1)%n)
-		msgLog.witnessed[(i+1)%n] = append(msgLog.witnessed[(i+1)%n], i)
+		for j := uint32(0); j < nr_witnesses; j++ {
+			msgLog.witnesses[i] = append(msgLog.witnesses[i], (i+1+j)%n)
+			msgLog.witnessed[(i+1+j)%n] = append(msgLog.witnessed[(i+1+j)%n], i)
+		}
 		msgLog.ackTimers[i] = make(map[uint64]*time.Timer)
 		msgLog.witnessLogConfirmed[i] = uint64(0)
 	}
