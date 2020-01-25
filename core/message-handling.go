@@ -249,11 +249,10 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				case 0: // send challenge
 					// reply ack need to recreate ack, msg2 should contain msghash
 					// msg, err = messageImpl.NewFromBinary(msg2.Msg())
-					seq := log.FindSeqFromMsg(msg2.Origmsg())
-					logger.Debugf("YYY: Received %d", seq)
-					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes, msg3.Sequence())
-					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
-					log.Append(ackmsg, id, msg3.ReplicaID())
+					seq, hash, sig := log.FindSeqFromMsg(msg2.Origmsg())
+					logger.Debugf("YYY: Received %d, resend auth to replica %d", seq, msg2.ReplicaID())
+					ackmsg := messageImpl.NewAcknowledge(id, msg2.ReplicaID(), hash, seq, sig, msg2.Origmsg(), msg2.Sequence())
+					log.Append(ackmsg, id, msg2.ReplicaID())
 					// TODO: must accept msg if the message is never accepted by this node. but we have not enough time to implement it.
 				case 1: // audit challenge
 					// reply logHistory

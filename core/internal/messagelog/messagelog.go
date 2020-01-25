@@ -58,7 +58,7 @@ type MessageLog interface {
 	VerifyLogHistory(replicaID uint32, seq uint64, loghist []byte, hash []byte) error
 	StopAckTimer(id uint32, seq uint64)
 	SetFaulty(id, faulty uint32)
-	FindSeqFromMsg(msg []byte) uint64
+	FindSeqFromMsg(msg []byte) (uint64, []byte, []byte)
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -89,6 +89,7 @@ type messageLog struct {
 	appendPRlog prlogAppender
 
 	n uint32
+	id uint32
 	logseq uint64
 	entries []logEntry
 	hashValue map[uint64][]byte
@@ -128,6 +129,7 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog := &messageLog{appendPRlog: appendPRlog}
 	msgLog.msgs = make(map[uint32]([]messages.ReplicaMessage))
 	msgLog.n = n
+	msgLog.id = id
 	msgLog.newAdded = make(map[uint32](chan<-bool))
 	msgLog.logseq = uint64(0)
 	msgLog.hashValue = make(map[uint64][]byte)
@@ -316,6 +318,7 @@ func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
 	if err != nil {
 		panic(err) // Supplied Authenticator must be able to sign
 	}
+	log.authenticators[log.id][myseq] = signature
 	return myseq, mylhash, signature
 }
 
@@ -331,7 +334,7 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, 
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, seq)
 	b = append(b, verifyHash...)
-	// logger.Debugf("-- from %d, hash1 %v, hash2 %v\n", rid, msgaudit.PrevHash(), verifyHash)
+	fmt.Printf("-- from %d, hash1 %v, hash2 %v\n", rid, msgaudit.PrevHash(), verifyHash)
 	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, rid, b, msgaudit.Authenticator()); err != nil {
 		return fmt.Errorf("Failed verifying authenticator: C %s", err)
 	}
@@ -401,9 +404,8 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 			break // continue
 		}
 		if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, id, tmpauthpayload, log.authenticators[id][tmpseq]); err != nil {
-			fmt.Printf("BBB: Failed to verify Log history of replica %d, seq %d, so consider it as 'exposed' one.\n", id, tmpseq)
-			fmt.Printf("BBB: %v\n", log.authenticators[id][tmpseq])
 			log.DumpAuthenticators()
+			fmt.Printf("SSS: EXPOSED replica:%d seq:%d time:%d : failed to verify LogHistory.\n", id, tmpseq, time.Now().UnixNano())
 			log.faultTable[id] = 2
 			return fmt.Errorf("Failed verifying authenticator: C id:%d, seq:%d, %s", id, tmpseq, err)
 		}
@@ -412,11 +414,11 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 	fmt.Printf("BBB: id:%d entries since seq:%d\n", i, log.witnessLogConfirmed[id])
 	// maybe shouldn't be clear faulty status if it's once exposed.
 	if log.faultTable[id] == 1 {
-		fmt.Printf("BBB: Verified log history from 'suspended' replica %d, so set the status back to 'trusted'.\n", id)
+		fmt.Printf("SSS: TRUSTED replica:%d time:%d : LogHistory Verified 1.\n", id, time.Now().UnixNano())
 		log.faultTable[id] = 0
 	}
 	if log.faultTable[id] == 2 {
-		fmt.Printf("BBB: Verified log history from 'exposed' replica %d, so set its status back to 'trusted'.\n", id)
+		fmt.Printf("SSS: TRUSTED replica:%d time:%d : LogHistory Verified 2.\n", id, time.Now().UnixNano())
 		log.faultTable[id] = 0
 	}
 	log.witnessLogConfirmed[id] += uint64(i)
@@ -425,50 +427,50 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 
 func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 	timeout := time.Duration(10000)*time.Millisecond
-	if seq == uint64(2) {
+	if seq == uint64(2) && myid == uint32(0) {
 		timeout = time.Duration(1)*time.Nanosecond
 	}
 	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
-		fmt.Printf(">>> AckTimer for seq %d expired and replica %d is now 'suspended'.\n", seq, id)
+		fmt.Printf("SSS: SUSPECTED replica:%d seq:%d time:%d : AckTimer expired.\n", id, seq, time.Now().UnixNano())
+		log.faultTable[id] = 1
 		for _, wid := range log.GetWitnesses(id) {
-			if myid == wid {
-				log.faultTable[id] = 1
-			} else {
+			if myid != wid {
 				fmt.Printf(">>> send 'audit challenge' to %d for suspecting %d\n", wid, id)
 				// This is a audit challenge
-				log.Append(log.msgImpl.NewChallenge(myid, wid, id, 1, msg), myid, wid)
+				log.Append(log.msgImpl.NewChallenge(myid, wid, id, 1, msg, seq), myid, wid)
 			}
 		}
 		// send challenge
 		fmt.Printf(">>> send 'send challenge' to %d\n", id)
-		log.Append(log.msgImpl.NewChallenge(myid, id, id, 0, msg), myid, id)
+		log.Append(log.msgImpl.NewChallenge(myid, id, id, 0, msg, seq), myid, id)
 	})
 }
 
 func (log *messageLog) SetFaulty(id, fault uint32) {
 	if log.faultTable[id] == 0 {
-		fmt.Printf(">>> Consider replica %d as faulty state %d (1 is 'suspended', 2 is 'exposed').\n", id, fault)
+		fmt.Printf("SSS: SUSPECTED replica:%d time:%d : received audit challenge %d.\n", id, time.Now().UnixNano(), fault)
 		log.faultTable[id] = fault
 	}
 }
 
-func (log *messageLog) FindSeqFromMsg(msg []byte) uint64 {
+func (log *messageLog) FindSeqFromMsg(msg []byte) (uint64, []byte, []byte) {
 	log.lock.Lock()
 	defer log.lock.Unlock()
 
 	for i := log.logseq; i > uint64(0); i-- {
 		if bytes.Equal(log.entries[i].MsgHash, msg) {
-			return i
+			// return sequence, *previous* hash, and authenticator
+			return i, log.hashValue[i-1], log.authenticators[log.id][i]
 		}
 	}
-	return uint64(0)
+	return uint64(0), []byte{}, []byte{}
 }
 
 func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
 	if log.faultTable[id] == 1 {
-		fmt.Printf(">>> Received Ack message from 'suspended' replica %d, so set its status back to 'trusted'.\n", id)
+		fmt.Printf("SSS: TRUSTED replica:%d seq:%d time:%d : received and verified acknowledgement.\n", id, seq, time.Now().UnixNano())
 		log.faultTable[id] = 0
 	}
 

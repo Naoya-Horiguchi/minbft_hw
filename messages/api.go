@@ -31,7 +31,7 @@ type MessageImpl interface {
 	NewAudit(replicaID, peerID uint32, msg []byte, prevhash []byte, seq uint64, auth []byte) AuditMessage
 	NewLogHistory(replicaID, peerID uint32, seq uint64, logs []byte, hash []byte) LogHistory
 	NewForwardAuth(replicaID, peerID uint32, seq uint64, auth []byte) ForwardAuth
-	NewChallenge(replicaID, peerID, faulty, ctype uint32, msg []byte) Challenge
+	NewChallenge(replicaID, peerID, faulty, ctype uint32, msg []byte, seq uint64) Challenge
 }
 
 type Message interface {

@@ -160,6 +160,7 @@ message Challenge {
 		uint32 faulty_id = 3;
 		uint32 ctype = 4;        // 0: send challenge, 1: audit challenge
 		bytes origmsg = 5;
+		uint64 sequence = 6;
     }
     M msg = 1;
 }
