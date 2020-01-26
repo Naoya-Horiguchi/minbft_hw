@@ -396,6 +396,9 @@ func startPeerConnection(connect peerConnector, supply peerMessageSupplier) erro
 func makePeerMessageSupplier(log messagelog.MessageLog, peerID uint32) peerMessageSupplier {
 	return func(out chan<- []byte) {
 		for msg := range log.Stream(peerID, nil) {
+			if log.FaultSimulator(peerID) {
+				continue
+			}
 			msgBytes, err := msg.MarshalBinary()
 			switch msg.(type) {
 			// case messages.AuditMessage:

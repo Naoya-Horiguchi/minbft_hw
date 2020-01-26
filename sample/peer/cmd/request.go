@@ -77,9 +77,10 @@ func request(client client.Client, arg string) {
 		timeoutChan = time.After(timeout)
 	}
 
+	fmt.Printf("Request: time:%d\n", time.Now().UnixNano())
 	select {
 	case res := <-client.Request([]byte(arg)):
-		fmt.Println("Reply:", string(res))
+		fmt.Printf("Reply: time:%d %s\n", time.Now().UnixNano(), string(res))
 	case <-timeoutChan:
 		fmt.Println("Client Request timer expired.")
 		os.Exit(1)
@@ -122,6 +123,7 @@ func requests(args []string) ([]byte, error) {
 	}
 
 	rps := viper.GetDuration("client.rps")
+	fmt.Printf("CONFIG: client.rps:%d\n", uint32(viper.GetInt("client.rps")))
 	pitch := time.Second / rps
 	deadline := time.Now()
 	if len(args) > 0 {

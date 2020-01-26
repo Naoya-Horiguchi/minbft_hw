@@ -60,6 +60,7 @@ type MessageLog interface {
 	StopAckTimer(id uint32, seq uint64)
 	SetFaulty(id, faulty uint32)
 	FindSeqFromMsg(msg []byte) (uint64, []byte, []byte)
+	FaultSimulator(peerID uint32) bool
 
 	GetSequence() uint64
 	GetLatestHash(i uint64) []byte
@@ -109,6 +110,7 @@ type messageLog struct {
 	// maintain log entries from witness replicas
 	witnessLogHistory map[uint32]map[uint64][]byte
 	witnessLogConfirmed map[uint32]uint64
+	starttime time.Time
 }
 
 func GetMsgHash(msg []byte) []byte {
@@ -144,6 +146,7 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.ackTimers = make(map[uint32]map[uint64]*time.Timer)
 	msgLog.auditTimers = make(map[uint32]*time.Timer)
 	msgLog.witnessLogConfirmed = make(map[uint32]uint64)
+	msgLog.starttime = time.Now()
 	nr_witnesses := uint32(viper.GetInt("replica.witnesses"))
 	fmt.Printf("nr of witnesses: %d\n", nr_witnesses)
 	for i := uint32(0); i < n; i++ {
@@ -162,12 +165,13 @@ func New(n, id uint32, authenticator api.Authenticator, messageImpl messages.Mes
 	msgLog.auth = authenticator
 	msgLog.msgImpl = messageImpl
 	// Initialize timer for each witness replicas
+	audittime := viper.GetDuration("replica.audittime")
 	for _, v := range msgLog.witnessed[id] {
 		fmt.Printf("my audit target replica: %d\n", v)
 		go func() {
 			i := uint32(0)
 			quit := make(chan struct{})
-			ticker := time.NewTicker(1000 * time.Millisecond)
+			ticker := time.NewTicker(audittime * time.Millisecond)
 			time.Sleep(1000 * time.Millisecond)
 			for {
 				select {
@@ -287,13 +291,13 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 			// fmt.Printf("CCC: signature:%v\n", signature[0:20])
 			// prwmsg = messageImpl.NewPRWrapped(id, replicaID, msg, latestHash, log.logseq, signature)
 			prwmsg = messageImpl.NewPRWrapped(id, uint32(log.logseq), msg, latestHash, log.logseq, signature)
-			fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
+			// fmt.Printf("### SaveAuthenticator from AppendPRlog id:%d, seq:%d\n", id, log.logseq)
 			log.saveAuthenticator(id, log.logseq, signature)
 			// Set timer which expires if no ack receives
 			log.startAckTimer(id, replicaID, log.logseq, msg)
 			// log.startAckTimer(uint32(0), log.logseq)
 		}
-		fmt.Printf("Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
+		fmt.Printf("=== Append PRlog seq:%d, send:%d, peerID:%d\n", log.logseq, send, replicaID)
 		// fmt.Printf("CCC: lhash:%v, hashseed:%v\n", latestHash, x)
 		entry := &logEntry{
 			Seq: log.logseq,
@@ -339,7 +343,7 @@ func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, 
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, seq)
 	b = append(b, verifyHash...)
-	fmt.Printf("-- from %d, hash1 %v, hash2 %v\n", rid, msgaudit.PrevHash(), verifyHash)
+	// fmt.Printf("-- from %d, hash1 %v, hash2 %v\n", rid, msgaudit.PrevHash(), verifyHash)
 	if err := log.auth.VerifyMessageAuthenTag(api.ReplicaAuthen, rid, b, msgaudit.Authenticator()); err != nil {
 		return fmt.Errorf("Failed verifying authenticator: C %s", err)
 	}
@@ -431,10 +435,7 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 }
 
 func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
-	timeout := time.Duration(10000)*time.Millisecond
-	if seq == uint64(2) && myid == uint32(0) {
-		timeout = time.Duration(1)*time.Nanosecond
-	}
+	timeout := time.Duration(viper.GetDuration("replica.acktimeout"))*time.Millisecond
 	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
 		// TODO: send challenge to witness replicas
@@ -454,6 +455,11 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 }
 
 func (log *messageLog) SetFaulty(id, fault uint32) {
+	if viper.GetInt("replica.faultsim") == 4 && log.id == uint32(2) && id == uint32(1) {
+		fmt.Printf("UUU: ignore challenge against node %d, %d, %d.\n", log.id, id, log.faultTable[id])
+		return
+	}
+
 	if log.faultTable[id] == 0 {
 		fmt.Printf("SSS: SUSPECTED replica:%d time:%d : received audit challenge %d.\n", id, time.Now().UnixNano(), fault)
 		log.faultTable[id] = fault
@@ -484,6 +490,33 @@ func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
 		fmt.Printf(">>> Stop timer for replica:%d, seq:%d\n", id, seq)
 		log.ackTimers[id][seq].Stop()
 	}
+}
+
+func (log *messageLog) FaultSimulator(peerID uint32) bool {
+	faultsim := viper.GetInt("replica.faultsim")
+
+	// fmt.Printf("UUU: fault simulator %d\n", faultsim)
+	if faultsim == 0 { return false }
+	// one replica intentionally ignore another specific replica
+	if faultsim == 1 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) && peerID == uint32(3) {
+		return true
+	}
+	// one replica intentionally ignore all other replica (crash fault)
+	if faultsim == 2 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) {
+		fmt.Printf("UUU: filtered sending.\n")
+		return true
+	}
+	if faultsim == 3 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) {
+		fmt.Printf("YTT: faultsim 3 works!\n")
+		log.entries[log.logseq].MsgType += 10
+		log.entries[log.logseq].MsgHash = []byte("ABC€")
+	}
+	//
+	if faultsim == 4 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) && peerID == uint32(4) {
+		return true
+	}
+
+	return false
 }
 
 func (log *messageLog) supplyMessages(id uint32, ch chan<- messages.ReplicaMessage, done <-chan struct{}) {

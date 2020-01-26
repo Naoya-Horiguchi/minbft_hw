@@ -20,6 +20,7 @@ package minbft
 import (
 	"fmt"
 
+	"github.com/spf13/viper"
 	"github.com/hyperledger-labs/minbft/messages"
 )
 
@@ -81,6 +82,8 @@ func makePrepareApplier(id uint32, prepareSeq requestSeqPreparer, collectCommitm
 		if id == primaryID {
 			return nil // primary does not generate Commit
 		}
+
+		viper.GetInt("replica.faultsim")
 
 		commit := messageImpl.NewCommit(id, prepare)
 		handleGeneratedUIMessage(commit)

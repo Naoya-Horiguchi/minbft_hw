@@ -84,6 +84,15 @@ func init() {
 	runCmd.Flags().Int("witnesses", 1, "nr of witnesses")
 	must(viper.BindPFlag("replica.witnesses",
 		runCmd.Flags().Lookup("witnesses")))
+
+	runCmd.Flags().Int("acktimeout", 10000, "timeout (ms) of AckTimer")
+	must(viper.BindPFlag("replica.acktimeout", runCmd.Flags().Lookup("acktimeout")))
+
+	runCmd.Flags().Int("audittime", 2000, "duration (ms) of Audit tick")
+	must(viper.BindPFlag("replica.audittime", runCmd.Flags().Lookup("audittime")))
+
+	runCmd.Flags().Int("faultsim", 0, "Fault simulation type (default: 0)")
+	must(viper.BindPFlag("replica.faultsim", runCmd.Flags().Lookup("faultsim")))
 }
 
 type replicaStack struct {
@@ -94,6 +103,12 @@ type replicaStack struct {
 
 func run() error {
 	id := uint32(viper.GetInt("replica.id"))
+
+	fmt.Printf("CONFIG: replica.id:%d\n", id)
+	fmt.Printf("CONFIG: replica.witnesses:%d\n", uint32(viper.GetInt("replica.witnesses")))
+	fmt.Printf("CONFIG: replica.acktimeout:%d\n", uint32(viper.GetInt("replica.acktimeout")))
+	fmt.Printf("CONFIG: replica.audittime:%d\n", uint32(viper.GetInt("replica.audittime")))
+	fmt.Printf("CONFIG: replica.faultsim:%d\n", uint32(viper.GetInt("replica.faultsim")))
 
 	usigEnclaveFile, err := envsubst.String(viper.GetString("usig.enclaveFile"))
 	if err != nil {
