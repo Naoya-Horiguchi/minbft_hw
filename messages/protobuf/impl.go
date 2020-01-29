@@ -35,6 +35,10 @@ func (*impl) NewFromBinary(data []byte) (messages.Message, error) {
 	}
 
 	switch t := msg.Type.(type) {
+	case *Message_Evidencetransfer:
+		et := newEvidenceTransfer()
+		et.set(t.Evidencetransfer)
+		return et, nil
 	case *Message_Challenge:
 		challenge := newChallenge()
 		challenge.set(t.Challenge)
@@ -137,5 +141,11 @@ func (*impl) NewForwardAuth(r, p uint32, seq uint64, auth []byte) messages.Forwa
 func (*impl) NewChallenge(r, p, f, ctype uint32, msg []byte, seq uint64) messages.Challenge {
 	m := newChallenge()
 	m.init(r, p, f, ctype, msg, seq)
+	return m
+}
+
+func (*impl) NewEvidenceTransfer(r, p, faultid, ftype uint32, msg []byte) messages.EvidenceTransfer {
+	m := newEvidenceTransfer()
+	m.init(r, p, faultid, ftype, msg)
 	return m
 }

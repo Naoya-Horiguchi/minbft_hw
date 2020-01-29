@@ -119,6 +119,9 @@ func messageString(msg interface{}) string {
 	case messages.Challenge:
 		return fmt.Sprintf("CHALLENGE<cv=%d replica=%d peer=%d, faulty=%d, type=%d>",
 			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID(), msg.Ctype())
+	case messages.EvidenceTransfer:
+		return fmt.Sprintf("EVIDENCETRANSFER<cv=%d replica=%d peer=%d, faulty=%d, type=%d>",
+			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID(), msg.Ftype())
 	}
 	return "(unknown message)"
 }

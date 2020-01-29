@@ -197,6 +197,13 @@ func periodicFunction(log *messageLog, id, replica uint32, messageImpl messages.
 	auditmsg := messageImpl.NewAudit(id, replica, []byte{}, []byte{}, log.witnessLogConfirmed[replica], []byte{})
 	log.Append(auditmsg, id, replica)
 	// log.DumpAuthenticators()
+
+	if log.faultTable[replica] > 0 {
+		et := messageImpl.NewEvidenceTransfer(id, replica, replica, log.faultTable[replica], []byte{})
+		fmt.Printf("KKK: broadcast EvidenceTransfer replica %d, fault %d\n", replica, log.faultTable[replica])
+		log.Append(et, id, 100)
+	}
+
 }
 
 func (log *messageLog) Append(msg messages.ReplicaMessage, id uint32, peerID uint32) {
@@ -426,10 +433,10 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 		fmt.Printf("SSS: TRUSTED replica:%d time:%d : LogHistory Verified 1.\n", id, time.Now().UnixNano())
 		log.faultTable[id] = 0
 	}
-	if log.faultTable[id] == 2 {
-		fmt.Printf("SSS: TRUSTED replica:%d time:%d : LogHistory Verified 2.\n", id, time.Now().UnixNano())
-		log.faultTable[id] = 0
-	}
+	// if log.faultTable[id] == 2 {
+	// 	fmt.Printf("SSS: TRUSTED replica:%d time:%d : LogHistory Verified 2.\n", id, time.Now().UnixNano())
+	// 	log.faultTable[id] = 0
+	// }
 	log.witnessLogConfirmed[id] += uint64(i)
 	return nil
 }
@@ -438,6 +445,9 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 	timeout := time.Duration(viper.GetDuration("replica.acktimeout"))*time.Millisecond
 	fmt.Printf(">>> start acktimer [%d][%d]\n", id, seq)
 	log.ackTimers[id][seq] = time.AfterFunc(timeout, func() {
+		// EXPOSED is more important thant SUSPECTED so don't override it
+		if log.faultTable[id] == 2 { return }
+
 		// TODO: send challenge to witness replicas
 		fmt.Printf("SSS: SUSPECTED replica:%d seq:%d time:%d : AckTimer expired.\n", id, seq, time.Now().UnixNano())
 		log.faultTable[id] = 1
@@ -461,7 +471,11 @@ func (log *messageLog) SetFaulty(id, fault uint32) {
 	}
 
 	if log.faultTable[id] == 0 {
-		fmt.Printf("SSS: SUSPECTED replica:%d time:%d : received audit challenge %d.\n", id, time.Now().UnixNano(), fault)
+		if fault == uint32(1) {
+			fmt.Printf("SSS: SUSPECTED replica:%d time:%d : received audit challenge %d.\n", id, time.Now().UnixNano(), fault)
+		} else {
+			fmt.Printf("SSS: EXPOSED replica:%d time:%d : received EvidenceTransfer %d.\n", id, time.Now().UnixNano(), fault)
+		}
 		log.faultTable[id] = fault
 	}
 }
@@ -501,6 +515,10 @@ func (log *messageLog) FaultSimulator(peerID uint32) bool {
 	if faultsim == 1 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) && peerID == uint32(3) {
 		return true
 	}
+	// one replica intentionally ignore one specific witness replica
+	if faultsim == 5 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) && peerID == uint32(2) {
+		return true
+	}
 	// one replica intentionally ignore all other replica (crash fault)
 	if faultsim == 2 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) {
 		fmt.Printf("UUU: filtered sending.\n")
@@ -511,7 +529,7 @@ func (log *messageLog) FaultSimulator(peerID uint32) bool {
 		log.entries[log.logseq].MsgType += 10
 		log.entries[log.logseq].MsgHash = []byte("ABC€")
 	}
-	//
+	// 共謀のケース。f=2 以上でないと気づけない。
 	if faultsim == 4 && time.Now().After(log.starttime.Add(time.Second)) && log.id == uint32(1) && peerID == uint32(4) {
 		return true
 	}
