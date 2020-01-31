@@ -52,7 +52,7 @@ type MessageLog interface {
 	SaveAuthenticator(id uint32, seq uint64, auth []byte)
 	AppendPRlog(send int, replicaID uint32, msgbyte []byte) (messages.PeerReviewMessage, uint64)
 	VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error
-	GenerateAuthenticator() (uint64, []byte, []byte)
+	GenerateAuthenticator(int, uint32, []byte) (uint64, []byte, []byte, []byte)
 	Stream(id uint32, done <-chan struct{}) <-chan messages.ReplicaMessage
 	DumpAuthenticators()
 	GenerateLogHistory(seq, len uint64) ([]byte, []byte)
@@ -318,24 +318,24 @@ func makePRlogAppender(id uint32, authenticator api.Authenticator, messageImpl m
 	}
 }
 
-func (log *messageLog) GenerateAuthenticator() (uint64, []byte, []byte) {
-	// log.lock.Lock()
-	// defer log.lock.Unlock()
+func (log *messageLog) GenerateAuthenticator(send int, replicaID uint32, msgBytes []byte) (uint64, []byte, []byte, []byte) {
+	log.lock.Lock()
+	defer log.lock.Unlock()
 
-	myseq := log.GetSequence()
-	mylhash := log.GetLatestHash(uint64(0))
+	_, seq := log.appendPRlog(log, send, replicaID, msgBytes)
+	hash := log.hashValue[seq]
 	c := make([]byte, 8)
-	binary.LittleEndian.PutUint64(c, myseq)
-	c = append(c, mylhash...)
-	// fmt.Printf("CCC: seq:%d\n", log.logseq)
+	binary.LittleEndian.PutUint64(c, seq)
+	c = append(c, hash...)
+	// fmt.Printf("CCC: seq:%d\n", seq)
 	// fmt.Printf("CCC: sigpayload:%v\n", c)
 	signature, err := log.auth.GenerateMessageAuthenTag(api.ReplicaAuthen, c)
 	// fmt.Printf("CCC: signature:%v\n", signature[0:20])
 	if err != nil {
 		panic(err) // Supplied Authenticator must be able to sign
 	}
-	log.authenticators[log.id][myseq] = signature
-	return myseq, mylhash, signature
+	log.authenticators[log.id][seq] = signature
+	return seq, hash, log.hashValue[seq-1], signature
 }
 
 func (log *messageLog) VerifyAuthenticator(msgaudit messages.PeerReviewMessage, send uint32) error {

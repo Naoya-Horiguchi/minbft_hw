@@ -299,21 +299,20 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 						logger.Errorf("Failed verifying authenticator: A %s", err)
 						continue
 					}
-					_, seq2 := log.AppendPRlog(0, msg3.ReplicaID(), msgBytes)
-					myseq, mylhash, signature := log.GenerateAuthenticator()
+					seq2, _, myphash, signature := log.GenerateAuthenticator(0, msg3.ReplicaID(), msgBytes)
+
 					fmt.Printf("### SaveAuthenticator from PRWrapped id:%d/seq:%d, and id:%d/seq:%d\n", id, seq2, msg3.ReplicaID(), msg3.Sequence())
 					log.SaveAuthenticator(id, seq2, signature)
 					log.SaveAuthenticator(msg3.ReplicaID(), msg3.Sequence(), msg3.Authenticator())
 					for _, wid := range log.GetWitnesses(msg3.ReplicaID()) {
 						if id != wid {
-							// use "myseq-1" for sequence number?
+							// use "seq2-1" for sequence number?
 							fmt.Printf("&&& send authenticator to %d, (id:%d, peer:%d, seq:%d)\n", wid, msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence())
 							log.Append(messageImpl.NewForwardAuth(msg3.ReplicaID(), msg3.PeerID(), msg3.Sequence(), msg3.Authenticator()), id, wid)
 						}
 					}
-					mylhash = log.GetLatestHash(uint64(1))
 					// send back ack to sender of the PRWrapped
-					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), mylhash, myseq, signature, msgBytes, msg3.Sequence())
+					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), myphash, seq2, signature, msgBytes, msg3.Sequence())
 					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
