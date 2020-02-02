@@ -138,9 +138,9 @@ func (*impl) NewForwardAuth(r, p uint32, seq uint64, auth []byte) messages.Forwa
 	return m
 }
 
-func (*impl) NewChallenge(r, p, f, ctype uint32, msg []byte, seq uint64) messages.Challenge {
+func (*impl) NewChallenge(r, p, f, ctype, ftype uint32, msg []byte, seq uint64) messages.Challenge {
 	m := newChallenge()
-	m.init(r, p, f, ctype, msg, seq)
+	m.init(r, p, f, ctype, ftype, msg, seq)
 	return m
 }
 

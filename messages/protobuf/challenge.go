@@ -27,12 +27,13 @@ func newChallenge() *challenge {
 }
 
 // using r as generator replica of authenticator
-func (m *challenge) init(r, peerID, fault, ctype uint32, msg []byte, seq uint64) {
+func (m *challenge) init(r, peerID, fault, ctype, ftype uint32, msg []byte, seq uint64) {
 	m.Challenge = Challenge{Msg: &Challenge_M{
 		ReplicaId: r,
 		PeerId: peerID,
 		FaultyId: fault,
 		Ctype: ctype,
+		Ftype: ftype,
 		Origmsg: msg,
 		Sequence: seq,
 	}}
@@ -76,6 +77,10 @@ func (m *challenge) FaultID() uint32 {
 
 func (m *challenge) Ctype() uint32 {
 	return m.Msg.GetCtype()
+}
+
+func (m *challenge) Ftype() uint32 {
+	return m.Msg.GetFtype()
 }
 
 func (m *challenge) Origmsg() []byte {

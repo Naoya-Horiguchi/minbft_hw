@@ -117,8 +117,8 @@ func messageString(msg interface{}) string {
 		return fmt.Sprintf("FORWARDAUTH<cv=%d replica=%d peer=%d seq=%d>",
 			cv, msg.ReplicaID(), msg.PeerID(), msg.Sequence())
 	case messages.Challenge:
-		return fmt.Sprintf("CHALLENGE<cv=%d replica=%d peer=%d, faulty=%d, type=%d>",
-			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID(), msg.Ctype())
+		return fmt.Sprintf("CHALLENGE<cv=%d replica=%d change=%d, faulty=%d, ctype=%d, ftype=%d>",
+			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID(), msg.Ctype(), msg.Ftype())
 	case messages.EvidenceTransfer:
 		return fmt.Sprintf("EVIDENCETRANSFER<cv=%d replica=%d peer=%d, faulty=%d, type=%d>",
 			cv, msg.ReplicaID(), msg.PeerID(), msg.FaultID(), msg.Ftype())

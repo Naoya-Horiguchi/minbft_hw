@@ -19,9 +19,11 @@ package minbft
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	logging "github.com/op/go-logging"
 
+	"github.com/spf13/viper"
 	"github.com/hyperledger-labs/minbft/api"
 	"github.com/hyperledger-labs/minbft/core/internal/clientstate"
 	"github.com/hyperledger-labs/minbft/core/internal/messagelog"
@@ -245,7 +247,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 			switch msg2 := msg.(type) {
 			case messages.EvidenceTransfer:
 				logger.Debugf("### Received %d, %s", msg2.Ftype(), msgStr)
-				// TODO: need proof check
+				// TODO: need proof check that this message is properly signed by witness
 				log.SetFaulty(msg2.FaultID(), msg2.Ftype())
 				continue
 			case messages.Challenge:
@@ -255,13 +257,18 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					// reply ack need to recreate ack, msg2 should contain msghash
 					// msg, err = messageImpl.NewFromBinary(msg2.Msg())
 					seq, hash, sig := log.FindSeqFromMsg(msg2.Origmsg())
-					logger.Debugf("YYY: Received %d, resend auth to replica %d", seq, msg2.ReplicaID())
+					logger.Debugf("YYY: Received challenge %d, resend auth to replica %d", seq, msg2.ReplicaID())
 					ackmsg := messageImpl.NewAcknowledge(id, msg2.ReplicaID(), hash, seq, sig, msg2.Origmsg(), msg2.Sequence())
 					log.Append(ackmsg, id, msg2.ReplicaID())
 					// TODO: must accept msg if the message is never accepted by this node. but we have not enough time to implement it.
 				case 1: // audit challenge
 					// reply logHistory
-					log.SetFaulty(msg2.FaultID(), 1)
+					if msg2.PeerID() == 1 { // if status changed (could be both trusted->suspected, suspected->trusted)
+						et := messageImpl.NewEvidenceTransfer(id, msg2.ReplicaID(), msg2.FaultID(), msg2.Ftype(), []byte{})
+						fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.ReplicaID(), msg2.FaultID())
+						log.Append(et, id, 100)
+						log.SetFaulty(msg2.FaultID(), msg2.Ftype())
+					}
 				}
 				continue
 			case messages.ForwardAuth:
@@ -314,6 +321,10 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					// send back ack to sender of the PRWrapped
 					ackmsg := messageImpl.NewAcknowledge(id, msg3.ReplicaID(), myphash, seq2, signature, msgBytes, msg3.Sequence())
 					logger.Debugf("Send back Acknowledge id:%d seq:%d\n", msg3.ReplicaID(), msg3.Sequence())
+					if viper.GetInt("replica.faultsim") == 6 && id == uint32(2) && msg3.ReplicaID() == uint32(0) && seq2 > uint64(10) && seq2 < uint64(20) {
+						fmt.Printf("RRR: intentional delay ack %d to 1\n", seq2)
+						time.Sleep(3000 * time.Millisecond)
+					}
 					log.Append(ackmsg, id, msg3.ReplicaID())
 				case messages.Acknowledge:
 					if err = log.VerifyAuthenticator(msg2, 0); err != nil {
