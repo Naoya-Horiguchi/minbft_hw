@@ -425,6 +425,8 @@ func (log *messageLog) VerifyLogHistory(id uint32, seq uint64, logHist []byte, h
 			log.DumpAuthenticators()
 			fmt.Printf("SSS: EXPOSED replica:%d seq:%d time:%d : failed to verify LogHistory.\n", id, tmpseq, time.Now().UnixNano())
 			log.faultTable[id] = 2
+			et := log.msgImpl.NewEvidenceTransfer(log.id, log.id, id, uint32(2), []byte{})
+			log.Append(et, id, 100)
 			return fmt.Errorf("Failed verifying authenticator: C id:%d, seq:%d, %s", id, tmpseq, err)
 		}
 	}
@@ -469,6 +471,9 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 				log.Append(log.msgImpl.NewChallenge(myid, change, id, 1, uint32(1), msg, seq), myid, wid)
 			} else {
 				// TODO: if witness node detected the acktimer expiration!!
+				et := log.msgImpl.NewEvidenceTransfer(myid, myid, id, uint32(1), []byte{})
+				fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(1))
+				log.Append(et, myid, 100)
 			}
 		}
 
@@ -543,6 +548,9 @@ func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
 					log.Append(log.msgImpl.NewChallenge(log.id, change, id, 1, uint32(0), []byte{}, uint64(0)), log.id, wid)
 				} else {
 					// TODO: if witness node detected the acktimer expiration!!
+					et := log.msgImpl.NewEvidenceTransfer(log.id, log.id, id, uint32(0), []byte{})
+					fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(0))
+					log.Append(et, log.id, 100)
 				}
 			}
 			// log.Append(log.msgImpl.NewChallenge(log.id, 1, id, 1, uint32(0), []byte{}, uint64(0)), log.id, id)

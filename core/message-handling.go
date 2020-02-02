@@ -265,7 +265,7 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					// reply logHistory
 					if msg2.PeerID() == 1 { // if status changed (could be both trusted->suspected, suspected->trusted)
 						et := messageImpl.NewEvidenceTransfer(id, msg2.ReplicaID(), msg2.FaultID(), msg2.Ftype(), []byte{})
-						fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.ReplicaID(), msg2.FaultID())
+						fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.FaultID(), msg2.Ftype())
 						log.Append(et, id, 100)
 						log.SetFaulty(msg2.FaultID(), msg2.Ftype())
 					}
