@@ -461,19 +461,19 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 		if log.faultTable[id] == 0 {
 			change = uint32(1)
 			log.faultTable[id] = 1
-		}
-		for _, wid := range log.GetWitnesses(id) {
-			if myid != wid {
-				fmt.Printf(">>> send 'audit challenge' to %d for suspecting %d\n", wid, id)
-				// This is a audit challenge
-				// challenge にはもう一つ引数が必要でステータスの変更があったかどうかチェックする必要がある。
-				// NOTE: 第２引数、本来は peerID だが一時的に status change の有無を指定するようにする。
-				log.Append(log.msgImpl.NewChallenge(myid, change, id, 1, uint32(1), msg, seq), myid, wid)
-			} else {
-				// TODO: if witness node detected the acktimer expiration!!
-				et := log.msgImpl.NewEvidenceTransfer(myid, myid, id, uint32(1), []byte{})
-				fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(1))
-				log.Append(et, myid, 100)
+			for _, wid := range log.GetWitnesses(id) {
+				if myid != wid {
+					fmt.Printf(">>> send 'audit challenge' to %d for suspecting %d\n", wid, id)
+					// This is a audit challenge
+					// challenge にはもう一つ引数が必要でステータスの変更があったかどうかチェックする必要がある。
+					// NOTE: 第２引数、本来は peerID だが一時的に status change の有無を指定するようにする。
+					log.Append(log.msgImpl.NewChallenge(myid, change, id, 1, uint32(1), msg, seq), myid, wid)
+				} else {
+					// TODO: if witness node detected the acktimer expiration!!
+					et := log.msgImpl.NewEvidenceTransfer(myid, myid, id, uint32(1), []byte{})
+					fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(1))
+					log.Append(et, myid, 100)
+				}
 			}
 		}
 

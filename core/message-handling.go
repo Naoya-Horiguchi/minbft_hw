@@ -262,7 +262,9 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 					log.Append(ackmsg, id, msg2.ReplicaID())
 					// TODO: must accept msg if the message is never accepted by this node. but we have not enough time to implement it.
 				case 1: // audit challenge
-					// reply logHistory
+					// the audit challenge might be fake, so receiver must check that ...
+
+
 					if msg2.PeerID() == 1 { // if status changed (could be both trusted->suspected, suspected->trusted)
 						et := messageImpl.NewEvidenceTransfer(id, msg2.ReplicaID(), msg2.FaultID(), msg2.Ftype(), []byte{})
 						fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.FaultID(), msg2.Ftype())
