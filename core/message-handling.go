@@ -264,6 +264,10 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 				case 1: // audit challenge
 					// the audit challenge might be fake, so receiver must check that ...
 
+					if viper.GetInt("replica.faultsim") == 4 && id == uint32(2) && msg2.FaultID() == uint32(1) {
+						fmt.Printf("UUU: ignore challenge against node %d, %d.\n", msg2.FaultID(), id)
+						return
+					}
 
 					if msg2.PeerID() == 1 { // if status changed (could be both trusted->suspected, suspected->trusted)
 						et := messageImpl.NewEvidenceTransfer(id, msg2.ReplicaID(), msg2.FaultID(), msg2.Ftype(), []byte{})
