@@ -458,6 +458,7 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 		fmt.Printf("SSS: SUSPECTED replica:%d seq:%d time:%d : AckTimer expired.\n", id, seq, time.Now().UnixNano())
 		// ?? need lock?
 		var change uint32
+		change = uint32(0)
 		if log.faultTable[id] == 0 {
 			change = uint32(1)
 			log.faultTable[id] = 1
@@ -471,7 +472,7 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 				} else {
 					// TODO: if witness node detected the acktimer expiration!!
 					et := log.msgImpl.NewEvidenceTransfer(myid, myid, id, uint32(1), []byte{})
-					fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(1))
+					fmt.Printf("KKK1: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(1))
 					log.Append(et, myid, 100)
 				}
 			}
@@ -484,10 +485,10 @@ func (log *messageLog) startAckTimer(myid, id uint32, seq uint64, msg []byte) {
 }
 
 func (log *messageLog) SetFaulty(id, fault uint32) {
-	if viper.GetInt("replica.faultsim") == 4 && log.id == uint32(2) && id == uint32(1) {
-		fmt.Printf("UUU: ignore challenge against node %d, %d, %d.\n", log.id, id, log.faultTable[id])
-		return
-	}
+	// if viper.GetInt("replica.faultsim") == 4 && log.id == uint32(2) && id == uint32(1) {
+	// 	fmt.Printf("UUU: ignore challenge against node %d, %d, %d.\n", log.id, id, log.faultTable[id])
+	// 	return
+	// }
 
 	if (log.id == id) {
 		return
@@ -549,7 +550,7 @@ func (log *messageLog) StopAckTimer(id uint32, seq uint64) {
 				} else {
 					// TODO: if witness node detected the acktimer expiration!!
 					et := log.msgImpl.NewEvidenceTransfer(log.id, log.id, id, uint32(0), []byte{})
-					fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(0))
+					fmt.Printf("KKK2: broadcast EvidenceTransfer of replica %d, fault %d\n", id, uint32(0))
 					log.Append(et, log.id, 100)
 				}
 			}

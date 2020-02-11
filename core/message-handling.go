@@ -266,12 +266,13 @@ func makeMessageStreamHandler(id uint32, handle incomingMessageHandler, logger *
 
 					if viper.GetInt("replica.faultsim") == 4 && id == uint32(2) && msg2.FaultID() == uint32(1) {
 						fmt.Printf("UUU: ignore challenge against node %d, %d.\n", msg2.FaultID(), id)
-						return
+						continue
 					}
 
+					// Challange.PeerID は change を意味する。
 					if msg2.PeerID() == 1 { // if status changed (could be both trusted->suspected, suspected->trusted)
 						et := messageImpl.NewEvidenceTransfer(id, msg2.ReplicaID(), msg2.FaultID(), msg2.Ftype(), []byte{})
-						fmt.Printf("KKK: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.FaultID(), msg2.Ftype())
+						fmt.Printf("KKK3: broadcast EvidenceTransfer of replica %d, fault %d\n", msg2.FaultID(), msg2.Ftype())
 						log.Append(et, id, 100)
 						log.SetFaulty(msg2.FaultID(), msg2.Ftype())
 					}
